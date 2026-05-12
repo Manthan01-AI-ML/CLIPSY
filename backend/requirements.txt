@@ -1,0 +1,40 @@
+# Clipsy Backend Dependencies — pinned versions for reproducibility
+
+# FastAPI stack
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+python-multipart==0.0.12
+
+# Database
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+alembic==1.13.3
+
+# Auth & security
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+pydantic==2.9.2
+pydantic-settings==2.6.0
+email-validator==2.2.0
+slowapi==0.1.9               # Rate limiting (was missing — was being inherited from cached layer)
+
+# Task queue
+celery==5.4.0
+redis==5.1.1
+
+# Video / AI pipeline
+yt-dlp==2026.03.03            # latest stable; older versions hit "format not available" on new YouTube
+faster-whisper==1.0.3
+
+# LLM Providers (multi-provider: pick any / all)
+google-generativeai==0.8.3   # FREE — primary
+groq==0.11.0                 # FREE — fallback, fastest
+anthropic==0.39.0            # PAID — upgrade path
+
+# Utils
+python-dotenv==1.0.1
+httpx==0.27.2
+
+# Session SC: face-aware smart cropping (Haar cascades, no GPU needed)
+opencv-python-headless==4.10.0.84
+numpy>=1.26.0

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 48" width="240" height="48" fill="none">
+  <!-- Scissors mark, matching the cursor design -->
+  <g transform="translate(4, 10)" stroke="#ff5f3e" stroke-width="2" stroke-linecap="round" fill="none">
+    <!-- Scissor handles -->
+    <circle cx="6" cy="22" r="3.5"/>
+    <circle cx="18" cy="22" r="3.5"/>
+    <!-- Scissor blades crossing up -->
+    <line x1="8.5" y1="20" x2="16" y2="5"/>
+    <line x1="15.5" y1="20" x2="8" y2="5"/>
+    <!-- Film-frame brackets (subtle) -->
+    <path d="M 0 2 L 0 0 L 3 0" opacity="0.4"/>
+    <path d="M 24 2 L 24 0 L 21 0" opacity="0.4"/>
+    <path d="M 0 26 L 0 28 L 3 28" opacity="0.4"/>
+    <path d="M 24 26 L 24 28 L 21 28" opacity="0.4"/>
+  </g>
+  <!-- Wordmark -->
+  <text x="42" y="30" font-family="'Instrument Serif', 'Times New Roman', serif"
+        font-size="26" font-style="italic" letter-spacing="-0.02em" fill="#f4f1ea">
+    Clip<tspan fill="#ff5f3e">sy</tspan>
+  </text>
+  <!-- "AI" tag -->
+  <text x="142" y="22" font-family="'Geist Mono', monospace"
+        font-size="8" letter-spacing="0.15em" fill="#6b6761">AI</text>
+</svg>

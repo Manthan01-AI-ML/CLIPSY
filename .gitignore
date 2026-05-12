@@ -1,0 +1,139 @@
+# =============================================================================
+# Python
+# =============================================================================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+pip-log.txt
+.python-version
+
+# =============================================================================
+# Environment & Secrets  — NEVER commit real credentials
+# =============================================================================
+.env
+.env.local
+.env.*.local
+.env.production
+.env.staging
+.env.development
+
+# Explicitly allow the safe template (no real keys)
+!.env.example
+!.env.template
+
+# =============================================================================
+# Storage — user videos, audio, rendered clips  — NEVER commit
+# =============================================================================
+storage/
+backend/storage/raw/*
+backend/storage/audio/*
+backend/storage/clips/*
+!backend/storage/raw/.gitkeep
+!backend/storage/audio/.gitkeep
+!backend/storage/clips/.gitkeep
+
+# Belt-and-suspenders: catch any media file that ends up outside storage/
+# (large binary files have no place in git history)
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.avi
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.aac
+
+# =============================================================================
+# Cookies — YouTube session tokens  — NEVER commit
+# =============================================================================
+cookies/
+
+# =============================================================================
+# Certificates & private keys  — NEVER commit
+# =============================================================================
+*.pem
+*.key
+*.p12
+*.pfx
+*.cer
+*.crt
+localhost.crt
+localhost.key
+
+# =============================================================================
+# Testing & coverage
+# =============================================================================
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.cover
+.hypothesis/
+
+# =============================================================================
+# Celery runtime state
+# =============================================================================
+celerybeat-schedule
+celerybeat.pid
+
+# =============================================================================
+# Local databases (SQLite used in tests/dev)
+# =============================================================================
+*.db
+*.sqlite
+*.sqlite3
+
+# =============================================================================
+# IDE & editors
+# =============================================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# =============================================================================
+# OS artifacts
+# =============================================================================
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# =============================================================================
+# Logs & temp files
+# =============================================================================
+*.log
+logs/
+*.tmp
+*.bak
+
+# =============================================================================
+# Graphify cache — auto-regenerated index, never commit
+# =============================================================================
+graphify-out/cache/
+
+# =============================================================================
+# Old design system prototype — kept for reference, not in production
+# =============================================================================
+clipwise-design-system/
+
+# =============================================================================
+# Graphify cache — auto-regenerated index, never commit
+# =============================================================================
+graphify-out/cache/
+
+# =============================================================================
+# Old design system prototype — kept for reference, not in production
+# =============================================================================
+clipwise-design-system/
