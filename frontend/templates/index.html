@@ -3730,7 +3730,22 @@
         </div>
       </div>
 
-      <button class="btn-primary btn-magnetic" id="generate-btn">Generate 5 clips</button>
+      <!-- Session 1: variable clip count slider -->
+      <div class="option-group" style="margin-bottom:28px">
+        <h4>Number of clips</h4>
+        <div style="display:flex;align-items:center;gap:16px;margin-top:12px;">
+          <input type="range" id="num-clips-slider" min="3" max="20" step="1" value="5"
+                 style="flex:1;height:4px;-webkit-appearance:none;appearance:none;background:var(--border);border-radius:2px;outline:none;cursor:pointer;"
+                 aria-label="Number of clips">
+          <span id="num-clips-value" style="font-family:var(--mono);font-size:13px;color:var(--accent);min-width:20px;text-align:right;font-weight:600;">5</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px;">
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;">3 min</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;">20 max</span>
+        </div>
+      </div>
+
+      <button class="btn-primary btn-magnetic" id="generate-btn">Generate <span id="generate-btn-count">5</span> clips</button>
     </div>
 
     <div class="jobs-section fade-up d2 reveal">
@@ -3869,24 +3884,28 @@
 <div class="cw-modal-backdrop" id="forgot-modal" role="dialog" aria-modal="true" aria-labelledby="forgot-modal-title">
   <div class="cw-modal">
     <button class="cw-modal-close" data-close-modal="forgot-modal" aria-label="Close">×</button>
-    <h3 id="forgot-modal-title">Forgot your <em>password</em>?</h3>
-    <p class="cw-modal-sub">We'll add self-serve password reset in our next update. For now, drop us a line and we'll sort it out within a few hours.</p>
 
-    <div class="coming-soon-banner">
-      <div class="dot"></div>
-      <div class="text"><strong>Coming soon:</strong> email-based password reset. In development.</div>
+    <!-- Step 1: email form -->
+    <div id="forgot-step-1">
+      <h3 id="forgot-modal-title">Forgot your <em>password</em>?</h3>
+      <p class="cw-modal-sub">Enter your account email and we'll send you a reset link. It expires in 15 minutes.</p>
+      <div class="field">
+        <label for="forgot-email-input">Email address</label>
+        <input type="email" id="forgot-email-input" placeholder="you@example.com" autocomplete="email">
+      </div>
+      <button class="btn-primary" id="forgot-submit-btn" style="width:100%">Send reset link</button>
+      <div class="form-error" id="forgot-error"></div>
     </div>
 
-    <div class="forgot-info-block">
-      <strong>Need access right now?</strong>
-      Email us at <code id="forgot-email-link">hello@clipsy.ai</code> with the subject
-      <code>Password reset</code> and the email address you registered with.
-      We'll reset it manually and reply within 2 hours during business hours (IST).
+    <!-- Step 2: confirmation (shown after submit) -->
+    <div id="forgot-step-2" style="display:none;text-align:center;padding:16px 0;">
+      <div style="font-size:36px;margin-bottom:16px;">📬</div>
+      <h3 style="margin-bottom:10px;">Check your <em>inbox</em></h3>
+      <p class="cw-modal-sub" style="margin-bottom:0;">
+        We sent a reset link to <strong id="forgot-sent-to" style="color:var(--text)"></strong>.
+        It expires in 15 minutes. Check your spam folder if it doesn't arrive.
+      </p>
     </div>
-
-    <button class="btn-primary" id="forgot-email-btn" style="width:100%">
-      Email us: hello@clipsy.ai
-    </button>
   </div>
 </div>
 
@@ -4396,6 +4415,18 @@ wirePills('crop-pills', '.crop-icon');
 wirePills('caption-presets', '.caption-preset');
 wirePills('platform-picker', '.platform-option');  // Step 14
 
+// Session 1: clip count slider — update live label + generate button text
+const numClipsSlider = document.getElementById('num-clips-slider');
+const numClipsValue = document.getElementById('num-clips-value');
+const generateBtnCount = document.getElementById('generate-btn-count');
+if (numClipsSlider) {
+  numClipsSlider.addEventListener('input', () => {
+    const v = numClipsSlider.value;
+    if (numClipsValue) numClipsValue.textContent = v;
+    if (generateBtnCount) generateBtnCount.textContent = v;
+  });
+}
+
 function selectedValue(id) {
   const el = document.querySelector(`#${id} .active`);
   return el ? el.dataset.value : null;
@@ -4451,6 +4482,7 @@ document.getElementById('generate-btn').addEventListener('click', async () => {
   const crop_position = selectedValue('crop-pills');
   const caption_preset = selectedValue('caption-presets');
   const platform = selectedValue('platform-picker') || 'all';  // Step 14
+  const num_clips = parseInt(document.getElementById('num-clips-slider')?.value || '5', 10);
   // Post-production: silence removal only
   const add_hook_outro = false;  // Disabled per user feedback - hooks felt disjointed
   const remove_silences = document.getElementById('toggle-silence')?.checked ?? true;
@@ -4464,7 +4496,7 @@ document.getElementById('generate-btn').addEventListener('click', async () => {
       if (!url) { toast('Please paste a YouTube URL', 'error'); return; }
       const res = await api('/videos/youtube', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, goal, aspect_ratio, crop_position, caption_preset, platform, add_hook_outro, remove_silences }),
+        body: JSON.stringify({ url, goal, aspect_ratio, crop_position, caption_preset, platform, num_clips, add_hook_outro, remove_silences }),
       });
       if (!res.ok) {
         if (res.status === 429) throw new Error('Rate limit reached. Try again in an hour.');
@@ -4481,6 +4513,7 @@ document.getElementById('generate-btn').addEventListener('click', async () => {
       fd.append('crop_position', crop_position);
       fd.append('caption_preset', caption_preset);
       fd.append('platform', platform);
+      fd.append('num_clips', String(num_clips));
       fd.append('add_hook_outro', String(add_hook_outro));
       fd.append('remove_silences', String(remove_silences));
 
@@ -6846,15 +6879,53 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Forgot password link → opens modal
+// Forgot password link → opens modal (reset form to step 1 each time)
 const forgotLink = document.getElementById('forgot-password-link');
 if (forgotLink) {
-  forgotLink.addEventListener('click', () => openModal('forgot-modal'));
+  forgotLink.addEventListener('click', () => {
+    // Reset modal to step 1 in case user previously submitted
+    const s1 = document.getElementById('forgot-step-1');
+    const s2 = document.getElementById('forgot-step-2');
+    const errEl = document.getElementById('forgot-error');
+    const emailInput = document.getElementById('forgot-email-input');
+    if (s1) s1.style.display = '';
+    if (s2) s2.style.display = 'none';
+    if (errEl) errEl.textContent = '';
+    if (emailInput) emailInput.value = '';
+    openModal('forgot-modal');
+  });
 }
-const forgotEmailBtn = document.getElementById('forgot-email-btn');
-if (forgotEmailBtn) {
-  forgotEmailBtn.addEventListener('click', () => {
-    window.location.href = 'mailto:hello@clipsy.ai?subject=Password%20reset&body=Hi%2C%20I%20need%20to%20reset%20my%20password.%20My%20account%20email%20is%3A%20';
+
+// Forgot-modal submit
+const forgotSubmitBtn = document.getElementById('forgot-submit-btn');
+if (forgotSubmitBtn) {
+  forgotSubmitBtn.addEventListener('click', async () => {
+    const emailInput = document.getElementById('forgot-email-input');
+    const errEl = document.getElementById('forgot-error');
+    errEl.textContent = '';
+    const email = (emailInput.value || '').trim();
+    if (!email) { errEl.textContent = 'Please enter your email address.'; return; }
+
+    forgotSubmitBtn.disabled = true;
+    forgotSubmitBtn.innerHTML = '<span class="spinner"></span>Sending…';
+
+    try {
+      const res = await fetch('/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      if (res.status === 429) throw new Error('Too many attempts. Please wait an hour and try again.');
+      // Always show success regardless of whether email exists (prevents enumeration)
+      const sentToEl = document.getElementById('forgot-sent-to');
+      if (sentToEl) sentToEl.textContent = email;
+      document.getElementById('forgot-step-1').style.display = 'none';
+      document.getElementById('forgot-step-2').style.display = '';
+    } catch (err) {
+      errEl.textContent = err.message;
+      forgotSubmitBtn.disabled = false;
+      forgotSubmitBtn.textContent = 'Send reset link';
+    }
   });
 }
 
@@ -6911,6 +6982,14 @@ if (notifyBtn) {
    BOOT
    ========================================================== */
 (async function init() {
+  // Reset-password flow: if a ?token= param is present, the reset-password
+  // view script (at bottom of file) has set window.__cwResetToken. Show that
+  // view instead of the normal auth/dashboard flow.
+  if (window.__cwResetToken) {
+    showView('reset-password');
+    return;
+  }
+
   Auth.load();
   if (Auth.isAuthed()) {
     try {
@@ -8555,8 +8634,139 @@ if (notifyBtn) {
 })();
 </script>
 
+<!-- ============================================================ -->
+<!-- RESET PASSWORD VIEW — shown when ?token= is in the URL      -->
+<!-- ============================================================ -->
+<div id="view-reset-password" class="view">
+  <div class="auth-layout">
+    <div class="auth-hero">
+      <div class="auth-hero-content">
+        <div class="logo">Clip<em>sy</em></div>
+        <h1>Choose a new<br><em>password.</em></h1>
+        <p>Pick something strong. You won't need to reset it again any time soon.</p>
+      </div>
+      <div class="auth-hero-footer">
+        <span>Clipsy</span>
+        <span>AI Video Repurposing</span>
+      </div>
+    </div>
+    <div class="auth-form-wrap">
+      <div class="auth-form-inner">
+        <h2 class="auth-title">New password.</h2>
+        <p class="auth-subtitle">Enter and confirm your new password below.</p>
 
+        <div id="reset-pw-form-wrap">
+          <div class="field">
+            <label for="reset-new-password">New password</label>
+            <div class="pwd-input-wrap">
+              <input type="password" id="reset-new-password" placeholder="Min 8 characters" minlength="8" autocomplete="new-password">
+              <button type="button" class="pwd-toggle" aria-label="Show password" data-target="reset-new-password">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="eye-open"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="eye-closed" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="reset-confirm-password">Confirm new password</label>
+            <div class="pwd-input-wrap">
+              <input type="password" id="reset-confirm-password" placeholder="Same password again" minlength="8" autocomplete="new-password">
+            </div>
+          </div>
+          <button class="btn-primary" id="reset-pw-submit-btn" style="width:100%">Set new password</button>
+          <div class="form-error" id="reset-pw-error"></div>
+        </div>
 
+        <div id="reset-pw-success" style="display:none;text-align:center;padding:24px 0;">
+          <div style="font-size:36px;margin-bottom:16px;">✓</div>
+          <h3 style="margin-bottom:10px;font-family:var(--serif);font-size:28px;">Password <em style="color:var(--accent)">updated.</em></h3>
+          <p style="color:var(--text-dim);font-size:14px;margin-bottom:24px;">Redirecting you to the login page…</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ==========================================================
+   RESET PASSWORD VIEW
+   ========================================================== */
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  var resetToken = params.get('token');
+
+  if (resetToken) {
+    window.__cwResetToken = resetToken;
+  }
+
+  var submitBtn = document.getElementById('reset-pw-submit-btn');
+  var newPwInput = document.getElementById('reset-new-password');
+  var confirmPwInput = document.getElementById('reset-confirm-password');
+  var errorEl = document.getElementById('reset-pw-error');
+  var formWrap = document.getElementById('reset-pw-form-wrap');
+  var successWrap = document.getElementById('reset-pw-success');
+
+  if (submitBtn) {
+    submitBtn.addEventListener('click', async function() {
+      errorEl.textContent = '';
+      var newPw = newPwInput.value;
+      var confirmPw = confirmPwInput.value;
+      var token = window.__cwResetToken;
+
+      if (!token) {
+        errorEl.textContent = 'Invalid reset link. Please request a new one.';
+        return;
+      }
+      if (newPw.length < 8) {
+        errorEl.textContent = 'Password must be at least 8 characters.';
+        return;
+      }
+      if (newPw !== confirmPw) {
+        errorEl.textContent = 'Passwords do not match.';
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spinner"></span>Updating…';
+
+      try {
+        var res = await fetch('/auth/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: token, new_password: newPw }),
+        });
+        if (!res.ok) {
+          var err = await res.json().catch(function() { return { detail: 'Reset failed' }; });
+          throw new Error(err.detail || 'Reset failed');
+        }
+        formWrap.style.display = 'none';
+        successWrap.style.display = '';
+        history.replaceState(null, '', '/');
+        window.__cwResetToken = null;
+        setTimeout(function() {
+          if (typeof showView === 'function') showView('auth');
+        }, 2000);
+      } catch (err) {
+        errorEl.textContent = err.message;
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Set new password';
+      }
+    });
+  }
+
+  var resetToggle = document.querySelector('#reset-pw-form-wrap .pwd-toggle');
+  if (resetToggle) {
+    resetToggle.addEventListener('click', function() {
+      var targetId = resetToggle.dataset.target;
+      var input = document.getElementById(targetId);
+      if (!input) return;
+      var isHidden = input.type === 'password';
+      input.type = isHidden ? 'text' : 'password';
+      resetToggle.querySelector('.eye-open').style.display = isHidden ? 'none' : '';
+      resetToggle.querySelector('.eye-closed').style.display = isHidden ? '' : 'none';
+    });
+  }
+})();
+</script>
 
 
 </body>

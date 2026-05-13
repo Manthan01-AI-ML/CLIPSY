@@ -26,21 +26,27 @@
 
 ---
 
-### BUG-003 — Forgot password: no backend endpoint
-
-**Symptom:** The auth UI has a "Forgot password?" link/flow but there is no backend endpoint to handle it. Clicking through either 404s or silently fails.
-
-**Affected area:** `backend/api/routes/auth.py` — missing `/auth/forgot-password` and `/auth/reset-password` routes  
-**Severity:** Medium — blocks self-service password recovery; users have no way to regain access if they forget password  
-**Status:** Open  
-**Notes:** Need to implement: (1) `POST /auth/forgot-password` — accepts email, sends reset link via email; (2) `POST /auth/reset-password` — accepts token + new password. Requires email service wired up (`backend/services/notifications.py` scaffolded but not live).
-
 ---
 
 ## Closed
 
-<!-- Move fixed bugs here with fix date and commit/session reference -->
-
 | ID | Title | Fixed | Session/Commit |
 |---|---|---|---|
-| — | — | — | — |
+| BUG-003 | Forgot password: no backend endpoint | 2026-05-12 | Session 1 |
+
+### BUG-003 — Forgot password: no backend endpoint ✓ FIXED
+
+**Fix (Session 1, 2026-05-12):** Implemented full end-to-end forgot/reset flow. `POST /auth/forgot-password` (3/hour, always 200, email enumeration safe) + `POST /auth/reset-password` (5/hour). `PasswordResetToken` model added with SHA-256 hashed tokens, 15-min expiry, single-use. `send_password_reset_email()` via Resend SDK in `backend/services/notifications.py` with dev console fallback. Frontend `#forgot-modal` now has real 2-step flow; `#view-reset-password` SPA view added. `GET /reset-password` FastAPI passthrough added to `main.py`.
+
+---
+
+## Low priority / Cosmetic
+
+### BUG-004 — `passlib[bcrypt]` listed in requirements but unused
+
+**Symptom:** `backend/requirements.txt` still lists `passlib[bcrypt]` but the codebase uses `bcrypt` directly via `hash_password()` / `verify_password()` in `security.py`. The dependency is redundant dead weight.
+
+**Affected area:** `backend/requirements.txt`  
+**Severity:** Low — no functional impact; just installs an extra package  
+**Status:** Open  
+**Notes:** Safe to remove `passlib[bcrypt]` in a cleanup pass. Confirm no `passlib` imports exist first (`grep -r "passlib" backend/`).

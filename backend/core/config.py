@@ -62,6 +62,15 @@ class Settings(BaseSettings):
     # --- Free tier ---
     FREE_CREDITS: int = 3
 
+    # --- Email (Resend) ---
+    # Set RESEND_API_KEY in .env for live email. If empty, reset links are
+    # printed to the console (dev fallback — never sends real email).
+    RESEND_API_KEY: str = ""
+    EMAIL_FROM: str = "hello@clipsy.pro"
+    # Used to build the reset-password link in the email body.
+    # Set to your production domain in .env (e.g. https://app.clipsy.pro).
+    FRONTEND_URL: str = "http://localhost:8080"
+
     # --- Rate limits ---
     RATE_LIMIT_LOGIN: str = "10/minute"
     RATE_LIMIT_REGISTER: str = "5/hour"

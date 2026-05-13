@@ -99,6 +99,7 @@ def submit_youtube(
             "crop_position": payload.crop_position,
             "caption_preset": payload.caption_preset,
             "platform": payload.platform,  # Step 14
+            "num_clips": payload.num_clips,  # Session 1
             # Session C:
             "add_hook_outro": payload.add_hook_outro,
             "remove_silences": payload.remove_silences,
@@ -128,6 +129,7 @@ async def upload_video(
     crop_position: _CropStr = Form("center"),
     caption_preset: _CaptionStr = Form("hormozi"),
     platform: _PlatformStr = Form("all"),  # NEW Step 14
+    num_clips: int = Form(5),             # Session 1: validated below
     # Session C:
     add_hook_outro: bool = Form(True),
     remove_silences: bool = Form(True),
@@ -138,6 +140,9 @@ async def upload_video(
 
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename required")
+
+    if not (3 <= num_clips <= 20):
+        raise HTTPException(status_code=422, detail="num_clips must be between 3 and 20")
 
     from pathlib import Path
     ext = Path(file.filename).suffix.lower()
@@ -158,6 +163,7 @@ async def upload_video(
             "crop_position": crop_position,
             "caption_preset": caption_preset,
             "platform": platform,  # NEW Step 14
+            "num_clips": num_clips,  # Session 1
             # Session C:
             "add_hook_outro": add_hook_outro,
             "remove_silences": remove_silences,

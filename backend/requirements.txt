@@ -31,6 +31,9 @@ google-generativeai==0.8.3   # FREE — primary
 groq==0.11.0                 # FREE — fallback, fastest
 anthropic==0.39.0            # PAID — upgrade path
 
+# Email delivery (Session 1: forgot-password flow)
+resend==2.9.0
+
 # Utils
 python-dotenv==1.0.1
 httpx==0.27.2

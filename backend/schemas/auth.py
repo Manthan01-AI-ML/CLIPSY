@@ -54,6 +54,20 @@ class RefreshRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Forgot / reset password (Session 1)
+# ---------------------------------------------------------------------------
+class ForgotPasswordRequest(BaseModel):
+    """POST /auth/forgot-password body."""
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """POST /auth/reset-password body."""
+    token: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+# ---------------------------------------------------------------------------
 # User (returned on register, /users/me, etc.)
 # ---------------------------------------------------------------------------
 class UserOut(BaseModel):

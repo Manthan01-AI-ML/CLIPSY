@@ -104,6 +104,9 @@ def process_video(self, job_id_str: str) -> dict:
         caption_preset = meta.get("caption_preset", settings.DEFAULT_CAPTION_PRESET)
         # Step 14: target platform for tuned clip selection
         platform = meta.get("platform", "all")
+        # Session 1: variable clip count (range 3-20, default 5)
+        num_clips = int(meta.get("num_clips", 5))
+        num_clips = max(3, min(20, num_clips))  # clamp — never trust stored values blindly
         # Session C: post-production
         add_hook_outro = bool(meta.get("add_hook_outro", False))
         remove_silences = bool(meta.get("remove_silences", False))
@@ -111,6 +114,7 @@ def process_video(self, job_id_str: str) -> dict:
     logger.info(
         f"[{job_id}] config: goal={goal}, aspect={aspect_ratio}, "
         f"crop={crop_position}, caption={caption_preset}, platform={platform}, "
+        f"num_clips={num_clips}, "
         f"add_hook_outro={add_hook_outro}, remove_silences={remove_silences}"
     )
 
@@ -152,7 +156,7 @@ def process_video(self, job_id_str: str) -> dict:
             job_id=job_id,
             transcript=transcript,
             goal=goal,
-            num_clips=5,
+            num_clips=num_clips,  # Session 1: from job meta (was hardcoded 5)
             creator_memory="",
             platform=platform,  # Step 14: platform-aware scoring
         )

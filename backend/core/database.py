@@ -61,6 +61,7 @@ def init_db() -> None:
     # Even though we don't use these imports directly, they're needed
     # for Base.metadata to know about the tables.
     from backend.models import user, video, clip  # noqa: F401
+    from backend.models import password_reset  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
 
@@ -76,11 +77,39 @@ def init_db() -> None:
                 "ADD COLUMN IF NOT EXISTS lifetime_clips_generated INTEGER NOT NULL DEFAULT 0"
             ))
     except Exception as e:
-        # Don't fail startup if migration can't run (e.g. SQLite in tests).
-        # The new column lives on the model regardless; only the bare-DB case
-        # would fail at query time, and that's fine to log not crash.
         import logging
         logging.getLogger(__name__).warning(
             f"Could not add lifetime_clips_generated column "
             f"(might be SQLite or already exists): {e}"
+        )
+
+    # Session 1: password_reset_tokens table.
+    # create_all handles this if the table is new. The try/except below is a
+    # belt-and-suspenders guard for environments where create_all was already
+    # called before this model existed (i.e., existing deployed instances).
+    try:
+        from sqlalchemy import text
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    token_hash VARCHAR(64) NOT NULL UNIQUE,
+                    expires_at TIMESTAMPTZ NOT NULL,
+                    used_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_password_reset_tokens_user_id "
+                "ON password_reset_tokens (user_id)"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_password_reset_tokens_token_hash "
+                "ON password_reset_tokens (token_hash)"
+            ))
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(
+            f"Could not create password_reset_tokens table: {e}"
         )

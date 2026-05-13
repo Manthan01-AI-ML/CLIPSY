@@ -51,6 +51,13 @@ class YoutubeSubmitRequest(BaseModel):
             "'all' balances across all platforms."
         ),
     )
+    # Session 1: variable clip count
+    num_clips: int = Field(
+        default=5,
+        ge=3,
+        le=20,
+        description="Number of clips to generate (3–20). Default 5.",
+    )
     # Session C: post-production magic
     add_hook_outro: bool = Field(
         default=True,

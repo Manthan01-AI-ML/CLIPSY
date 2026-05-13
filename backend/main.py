@@ -144,3 +144,16 @@ def serve_index():
     if INDEX_HTML.exists():
         return FileResponse(str(INDEX_HTML), media_type="text/html")
     return {"app": settings.APP_NAME, "version": "0.1.0", "docs": "/docs"}
+
+
+@app.get("/reset-password", include_in_schema=False)
+def serve_reset_password():
+    """Serve the SPA for the /reset-password?token=... route.
+
+    The SPA boot script reads window.location.search for ?token= and switches
+    to the reset-password view automatically. FastAPI just needs to serve the
+    same index.html so the JS can run.
+    """
+    if INDEX_HTML.exists():
+        return FileResponse(str(INDEX_HTML), media_type="text/html")
+    return {"app": settings.APP_NAME, "version": "0.1.0", "docs": "/docs"}

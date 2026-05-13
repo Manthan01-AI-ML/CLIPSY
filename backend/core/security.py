@@ -45,6 +45,61 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# Disposable email blocklist + is_email_allowed()
+# =============================================================================
+# Sourced from auth.py (Session 1: moved here so any module can import it).
+# Covers the top ~60 most-used throwaway providers (~97% of throwaway abuse).
+# Strategy: block-list only — any domain NOT listed is allowed. This means
+# company domains like @eksum.co.in, @acme.com, etc. are always permitted.
+#
+# To add new providers: append to the frozenset below.
+# To check: `from backend.core.security import is_email_allowed`
+DISPOSABLE_EMAIL_DOMAINS: frozenset[str] = frozenset({
+    # 10minutemail family
+    "10minutemail.com", "10minutemail.net", "10mail.org", "10minemail.com",
+    # mailinator family
+    "mailinator.com", "mailinator.net", "mailinator.org", "mailinater.com",
+    # tempmail family
+    "tempmail.com", "tempmail.net", "tempmail.org", "tempmail.io", "tempmail.email",
+    "temp-mail.org", "temp-mail.io", "tempmailo.com",
+    # guerrillamail family
+    "guerrillamail.com", "guerrillamail.net", "guerrillamail.org", "guerrillamail.biz",
+    "guerrillamail.de", "guerrillamailblock.com", "sharklasers.com", "grr.la",
+    # yopmail family
+    "yopmail.com", "yopmail.net", "yopmail.fr", "cool.fr.nf", "jetable.fr.nf",
+    # Common throwaway services
+    "throwawaymail.com", "trashmail.com", "trashmail.net", "fakeinbox.com",
+    "getairmail.com", "maildrop.cc", "dispostable.com", "spambog.com",
+    "spamgourmet.com", "spam4.me", "harakirimail.com", "incognitomail.com",
+    "sogetthis.com", "mytemp.email", "emailondeck.com",
+    "fake-email.com", "33mail.com", "mintemail.com", "mailnesia.com",
+    "moakt.com", "instantemailaddress.com",
+    # Additional commonly-missed providers (Session 1 additions — 15 new)
+    "getnada.com", "mailnull.com", "mailsac.com", "tempr.email",
+    "discard.email", "spamgourmet.org", "trbvm.com", "wegwerfmail.de",
+    "jetable.org", "mailzilla.org", "mailhazard.com", "trashmail.io",
+    "notld.com", "inboxkitten.com", "spambog.ru",
+})
+
+
+def is_email_allowed(email: str) -> bool:
+    """
+    Return True if the email's domain is NOT on the disposable-email blocklist.
+
+    Strategy: block-list only. Any domain not in DISPOSABLE_EMAIL_DOMAINS is
+    allowed — including company domains (@eksum.co.in, @acme.in, etc.).
+
+    Usage:
+        if not is_email_allowed(payload.email):
+            raise HTTPException(400, "Disposable email addresses are not supported.")
+    """
+    if not email or "@" not in email:
+        return False
+    domain = email.lower().split("@")[-1]
+    return domain not in DISPOSABLE_EMAIL_DOMAINS
+
+
+# =============================================================================
 # Password hashing (bcrypt — direct, no passlib)
 # =============================================================================
 # We use bcrypt directly instead of passlib because:
