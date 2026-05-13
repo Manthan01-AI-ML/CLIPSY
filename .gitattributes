@@ -1,0 +1,23 @@
+# Normalize line endings: LF for source files
+* text=auto eol=lf
+
+# Force LF for these (Docker/Linux compatibility critical)
+*.py text eol=lf
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+Dockerfile text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.svg binary
+*.ico binary
+*.mp4 binary
+*.zip binary
