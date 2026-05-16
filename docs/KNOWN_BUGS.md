@@ -33,10 +33,46 @@
 | ID | Title | Fixed | Session/Commit |
 |---|---|---|---|
 | BUG-003 | Forgot password: no backend endpoint | 2026-05-12 | Session 1 |
+| BUG-005 | MediaPipe requires `libgles2` + `libegl1` in Docker | 2026-05-15 | Session 2 |
+| BUG-006 | Full-range detector was an alias of short-range (same model) | 2026-05-16 | Session 3 |
+| BUG-007 | Panel/group faces missed — wrong model + aggressive NMS | 2026-05-16 | Session 3 |
+
+### BUG-006 — Full-range detector was a fake alias of short-range ✓ FIXED
+
+**Symptom:** `detect_faces_mediapipe_full_range()` claimed to use a different model suited for group/panel content, but `_get_full_range_detector()` literally returned `_get_short_range_detector()` — same Python object, same `.tflite` file. Routing to "full" via `auto_select_model()` had zero effect.
+
+**Affected area:** `backend/pipeline/face_detection.py` — `_get_full_range_detector()`
+**Severity:** High — panel/group detection was completely broken; results identical to short-range
+**Status:** Fixed (Phase 2A.1, Session 3, 2026-05-16)
+**Fix:** Downloaded `blaze_face_full_range.tflite` (1058 KB) from Google's official CDN. Created a separate singleton with `min_suppression_threshold=0.1` (permissive NMS for adjacent faces). Short-range retains `min_suppression_threshold=0.3`.
+
+---
+
+### BUG-007 — Panel/group faces missed: wrong model + aggressive NMS ✓ FIXED
+
+**Symptom:** `03_panel_4person.mp4` returned 0–1 face per frame. Session 2 logged this as "threshold may need tuning" but the real causes were: (1) short-range model is optimized for ≤2m selfie distance and misses faces at group-shot scale; (2) `min_suppression_threshold=0.3` merges adjacent faces in tight panel layouts.
+
+**Affected area:** `backend/pipeline/face_detection.py` — model selection + NMS config
+**Severity:** High — any content with > 1 speaker in frame was effectively broken
+**Status:** Fixed (Phase 2A.1, Session 3, 2026-05-16)
+**Fix:** `detect_faces_with_retry()` cascade: short-range fires only for large close-up faces (≥8% frame area); everything else falls to full-range at 0.3 confidence with NMS=0.1. Panel video now returns 3–5 faces per frame.
+
+---
 
 ### BUG-003 — Forgot password: no backend endpoint ✓ FIXED
 
 **Fix (Session 1, 2026-05-12):** Implemented full end-to-end forgot/reset flow. `POST /auth/forgot-password` (3/hour, always 200, email enumeration safe) + `POST /auth/reset-password` (5/hour). `PasswordResetToken` model added with SHA-256 hashed tokens, 15-min expiry, single-use. `send_password_reset_email()` via Resend SDK in `backend/services/notifications.py` with dev console fallback. Frontend `#forgot-modal` now has real 2-step flow; `#view-reset-password` SPA view added. `GET /reset-password` FastAPI passthrough added to `main.py`.
+
+### BUG-005 — MediaPipe requires `libgles2` + `libegl1` in Docker (Phase 2A)
+
+**Symptom:** `mediapipe.tasks.python.vision.FaceDetector.create_from_options()` raises `libGLESv2.so.2: cannot open shared object file: No such file or directory` in the container even when running CPU-only inference. All 25 debug images are generated but show "NO FACE DETECTED" on every frame.
+
+**Affected area:** `Dockerfile` — missing system packages  
+**Severity:** Blocker for Phase 2A face detection — detection silently fails  
+**Status:** Fixed (Phase 2A) — `libgles2` and `libegl1` added to Dockerfile apt-get install; rebuilt images  
+**Notes:** MediaPipe Tasks API uses OpenGL ES for pre/post-processing even in CPU-only mode. The `python:3.11-slim` base image does not include Mesa GL libraries. Fix: add `libgles2 libegl1` to the apt-get RUN layer. This is a one-time infrastructure fix; the libs are small (~5 MB combined).
+
+---
 
 ---
 

@@ -35,6 +35,7 @@ services:
       - ./frontend:/app/frontend          # ← NEW: mount frontend for the SPA
       - ./storage:/storage
       - ./cookies:/app/cookies
+      - ./test_videos:/app/test_videos:ro # Phase 2A: face detection debug videos (read-only)
     ports:
       - "8000:8000"
     env_file:
@@ -52,6 +53,7 @@ services:
       - ./backend:/app/backend
       - ./storage:/storage
       - ./cookies:/app/cookies
+      - ./test_videos:/app/test_videos:ro # Phase 2A: face detection debug videos (read-only)
     env_file:
       - .env
     depends_on:

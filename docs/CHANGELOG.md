@@ -2,6 +2,59 @@
 
 ---
 
+## 2026-05-16 — Session 3: Phase 2A.1 — Fix MediaPipe Detection Gaps
+
+### Fixed
+- **BUG-006**: Full-range detector was returning the short-range singleton. `_get_full_range_detector()` now loads `blaze_face_full_range.tflite` — a genuinely different model — with `min_suppression_threshold=0.1` (permissive NMS for adjacent panel faces).
+- **BUG-007**: Panel/group face detection was broken. New `detect_faces_with_retry()` cascade (short≥0.5→full≥0.3→CLAHE+full≥0.3) and the correct full-range model now detect 3–5 faces per frame in panel content (was 0–1).
+
+### New features
+- **`detect_faces_with_retry(frame)`** — cascading multi-pass entry point returning `(faces, detection_path)`. Replaces `detect_faces_smart()` as the canonical function.
+- **`enhance_for_detection(frame)`** — CLAHE on LAB L-channel for low-light preprocessing (safety-net fallback; full-range at 0.3 handles all current test videos without it).
+
+### Changed
+- `backend/pipeline/face_detection.py` — complete rewrite: two real model URLs, two separate singletons, tiered confidence, no post-filter in `_run_detection()`, updated `detect_faces_smart()` and `legacy_compatible_detect()` to call `detect_faces_with_retry()`.
+- `scripts/test_face_detection.py` — complete rewrite: 8 frames at `[5,15,25,40,55,70,85,95]%`, colour-coded path badge per image, CLAHE before/after saved when triggered, per-frame path in `summary.json`.
+
+### New files / directories
+- `backend/pipeline/models/` — placeholder directory for Phase 2C model baking; `.tflite` files gitignored, downloaded to `/tmp/mediapipe_models/` at runtime.
+
+### Detection results (Phase 2A.1 test run)
+| Video | Frames | Faces | Dominant path |
+|---|---|---|---|
+| 01_single_speaker (TEDx) | 8/8 | 8 | full×6, short×2 |
+| 02_podcast_2person | 8/8 | 8 | full×8 |
+| 03_panel_4person | 8/8 | 14 | full×8 |
+| 04_screenshare | 8/8 | 5 | full×5, none×3 |
+| 05_lowlight | 8/8 | 6 | full×6, none×2 |
+
+---
+
+## 2026-05-15 — Session 2: Phase 2A — MediaPipe Face Detection Foundation
+
+### New features
+- **MediaPipe face detection module** (`backend/pipeline/face_detection.py`): Tasks API-based detector with singleton lazy-init, short-range and full-range entry points, auto model selection heuristic (portrait/ultra-wide/landscape), `detect_faces_smart()` convenience wrapper, and `legacy_compatible_detect()` drop-in adapter matching `_FaceDetector.detect_in_frame()` signature for Phase 2B.
+- **Visual debug script** (`scripts/test_face_detection.py`): samples 5 frames per test video, annotates bounding boxes + confidence labels + landmarks, writes 25 annotated JPEGs and `summary.json` to `scripts/debug_output/`.
+- **Test video set** (`test_videos/`): 5 representative clips (single speaker, 2-person podcast, 4-person panel, screenshare, low-light).
+
+### Changed
+- `backend/requirements.txt`: added `mediapipe==0.10.35` (verified on PyPI; latest stable; Python 3.9–3.12 supported).
+- `Dockerfile`: added `libgles2 libegl1` to apt-get install (required by MediaPipe Tasks API even in CPU-only mode; not included in `python:3.11-slim`).
+- `docker-compose.yml`: added `./test_videos:/app/test_videos:ro` volume to `backend` and `worker` services.
+
+### New files
+- `backend/pipeline/face_detection.py` — MediaPipe Tasks API detector (5 functions; smart_crop.py NOT modified)
+- `scripts/test_face_detection.py` — Phase 2A visual verification debug script
+- `scripts/debug_output/` — 25 annotated JPEGs + summary.json (generated in-session)
+- `test_videos/` — 5 test videos for Phase 2A/2B verification
+
+### Docs
+- `docs/DECISIONS.md`: MediaPipe Tasks API decision logged (with alternatives considered)
+- `docs/KNOWN_BUGS.md`: BUG-005 added and marked Fixed (libGLESv2 missing in Docker)
+- `docs/SESSION_LOG.md`: Session 2 entry added
+
+---
+
 ## 2026-05-12 — Session 1: Launch Sprint Day 1 — Foundations
 
 ### New features

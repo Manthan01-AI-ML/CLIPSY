@@ -1,0 +1,513 @@
+{
+  "01_single_speaker": {
+    "duration_sec": 481.58,
+    "dimensions": "1280x720",
+    "frames": [
+      {
+        "pct": 5,
+        "timestamp_sec": 24.08,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.921
+        ],
+        "output_file": "01_single_speaker_05pct.jpg"
+      },
+      {
+        "pct": 15,
+        "timestamp_sec": 72.24,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.737
+        ],
+        "output_file": "01_single_speaker_15pct.jpg"
+      },
+      {
+        "pct": 25,
+        "timestamp_sec": 120.4,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.908
+        ],
+        "output_file": "01_single_speaker_25pct.jpg"
+      },
+      {
+        "pct": 40,
+        "timestamp_sec": 192.63,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.916
+        ],
+        "output_file": "01_single_speaker_40pct.jpg"
+      },
+      {
+        "pct": 55,
+        "timestamp_sec": 264.87,
+        "detection_path": "short",
+        "faces_found": 1,
+        "confidences": [
+          0.556
+        ],
+        "output_file": "01_single_speaker_55pct.jpg"
+      },
+      {
+        "pct": 70,
+        "timestamp_sec": 337.11,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.859
+        ],
+        "output_file": "01_single_speaker_70pct.jpg"
+      },
+      {
+        "pct": 85,
+        "timestamp_sec": 409.34,
+        "detection_path": "short",
+        "faces_found": 1,
+        "confidences": [
+          0.618
+        ],
+        "output_file": "01_single_speaker_85pct.jpg"
+      },
+      {
+        "pct": 95,
+        "timestamp_sec": 457.5,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.898
+        ],
+        "output_file": "01_single_speaker_95pct.jpg"
+      }
+    ],
+    "path_counts": {
+      "short": 2,
+      "full": 6,
+      "clahe+full": 0,
+      "none": 0
+    },
+    "total_faces_detected": 8,
+    "output_files": [
+      "01_single_speaker_05pct.jpg",
+      "01_single_speaker_15pct.jpg",
+      "01_single_speaker_25pct.jpg",
+      "01_single_speaker_40pct.jpg",
+      "01_single_speaker_55pct.jpg",
+      "01_single_speaker_70pct.jpg",
+      "01_single_speaker_85pct.jpg",
+      "01_single_speaker_95pct.jpg"
+    ]
+  },
+  "02_podcast_2person": {
+    "duration_sec": 705.42,
+    "dimensions": "1280x720",
+    "frames": [
+      {
+        "pct": 5,
+        "timestamp_sec": 35.27,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.867
+        ],
+        "output_file": "02_podcast_2person_05pct.jpg"
+      },
+      {
+        "pct": 15,
+        "timestamp_sec": 105.81,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.886
+        ],
+        "output_file": "02_podcast_2person_15pct.jpg"
+      },
+      {
+        "pct": 25,
+        "timestamp_sec": 176.35,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.735
+        ],
+        "output_file": "02_podcast_2person_25pct.jpg"
+      },
+      {
+        "pct": 40,
+        "timestamp_sec": 282.17,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.843
+        ],
+        "output_file": "02_podcast_2person_40pct.jpg"
+      },
+      {
+        "pct": 55,
+        "timestamp_sec": 387.98,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.801
+        ],
+        "output_file": "02_podcast_2person_55pct.jpg"
+      },
+      {
+        "pct": 70,
+        "timestamp_sec": 493.79,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.89
+        ],
+        "output_file": "02_podcast_2person_70pct.jpg"
+      },
+      {
+        "pct": 85,
+        "timestamp_sec": 599.61,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.925
+        ],
+        "output_file": "02_podcast_2person_85pct.jpg"
+      },
+      {
+        "pct": 95,
+        "timestamp_sec": 670.15,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.888
+        ],
+        "output_file": "02_podcast_2person_95pct.jpg"
+      }
+    ],
+    "path_counts": {
+      "short": 0,
+      "full": 8,
+      "clahe+full": 0,
+      "none": 0
+    },
+    "total_faces_detected": 8,
+    "output_files": [
+      "02_podcast_2person_05pct.jpg",
+      "02_podcast_2person_15pct.jpg",
+      "02_podcast_2person_25pct.jpg",
+      "02_podcast_2person_40pct.jpg",
+      "02_podcast_2person_55pct.jpg",
+      "02_podcast_2person_70pct.jpg",
+      "02_podcast_2person_85pct.jpg",
+      "02_podcast_2person_95pct.jpg"
+    ]
+  },
+  "03_panel_4person": {
+    "duration_sec": 700.27,
+    "dimensions": "1280x720",
+    "frames": [
+      {
+        "pct": 5,
+        "timestamp_sec": 35.01,
+        "detection_path": "full",
+        "faces_found": 3,
+        "confidences": [
+          0.595,
+          0.446,
+          0.315
+        ],
+        "output_file": "03_panel_4person_05pct.jpg"
+      },
+      {
+        "pct": 15,
+        "timestamp_sec": 105.04,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.617
+        ],
+        "output_file": "03_panel_4person_15pct.jpg"
+      },
+      {
+        "pct": 25,
+        "timestamp_sec": 175.07,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.91
+        ],
+        "output_file": "03_panel_4person_25pct.jpg"
+      },
+      {
+        "pct": 40,
+        "timestamp_sec": 280.11,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.962
+        ],
+        "output_file": "03_panel_4person_40pct.jpg"
+      },
+      {
+        "pct": 55,
+        "timestamp_sec": 385.15,
+        "detection_path": "full",
+        "faces_found": 5,
+        "confidences": [
+          0.609,
+          0.545,
+          0.512,
+          0.424,
+          0.35
+        ],
+        "output_file": "03_panel_4person_55pct.jpg"
+      },
+      {
+        "pct": 70,
+        "timestamp_sec": 490.19,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.987
+        ],
+        "output_file": "03_panel_4person_70pct.jpg"
+      },
+      {
+        "pct": 85,
+        "timestamp_sec": 595.23,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.705
+        ],
+        "output_file": "03_panel_4person_85pct.jpg"
+      },
+      {
+        "pct": 95,
+        "timestamp_sec": 665.25,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.857
+        ],
+        "output_file": "03_panel_4person_95pct.jpg"
+      }
+    ],
+    "path_counts": {
+      "short": 0,
+      "full": 8,
+      "clahe+full": 0,
+      "none": 0
+    },
+    "total_faces_detected": 14,
+    "output_files": [
+      "03_panel_4person_05pct.jpg",
+      "03_panel_4person_15pct.jpg",
+      "03_panel_4person_25pct.jpg",
+      "03_panel_4person_40pct.jpg",
+      "03_panel_4person_55pct.jpg",
+      "03_panel_4person_70pct.jpg",
+      "03_panel_4person_85pct.jpg",
+      "03_panel_4person_95pct.jpg"
+    ]
+  },
+  "04_screenshare": {
+    "duration_sec": 265.9,
+    "dimensions": "1280x720",
+    "frames": [
+      {
+        "pct": 5,
+        "timestamp_sec": 13.29,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.916
+        ],
+        "output_file": "04_screenshare_05pct.jpg"
+      },
+      {
+        "pct": 15,
+        "timestamp_sec": 39.88,
+        "detection_path": "none",
+        "faces_found": 0,
+        "confidences": [],
+        "output_file": "04_screenshare_15pct.jpg"
+      },
+      {
+        "pct": 25,
+        "timestamp_sec": 66.47,
+        "detection_path": "none",
+        "faces_found": 0,
+        "confidences": [],
+        "output_file": "04_screenshare_25pct.jpg"
+      },
+      {
+        "pct": 40,
+        "timestamp_sec": 106.36,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.787
+        ],
+        "output_file": "04_screenshare_40pct.jpg"
+      },
+      {
+        "pct": 55,
+        "timestamp_sec": 146.25,
+        "detection_path": "none",
+        "faces_found": 0,
+        "confidences": [],
+        "output_file": "04_screenshare_55pct.jpg"
+      },
+      {
+        "pct": 70,
+        "timestamp_sec": 186.13,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.964
+        ],
+        "output_file": "04_screenshare_70pct.jpg"
+      },
+      {
+        "pct": 85,
+        "timestamp_sec": 226.01,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.513
+        ],
+        "output_file": "04_screenshare_85pct.jpg"
+      },
+      {
+        "pct": 95,
+        "timestamp_sec": 252.6,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.875
+        ],
+        "output_file": "04_screenshare_95pct.jpg"
+      }
+    ],
+    "path_counts": {
+      "short": 0,
+      "full": 5,
+      "clahe+full": 0,
+      "none": 3
+    },
+    "total_faces_detected": 5,
+    "output_files": [
+      "04_screenshare_05pct.jpg",
+      "04_screenshare_15pct.jpg",
+      "04_screenshare_25pct.jpg",
+      "04_screenshare_40pct.jpg",
+      "04_screenshare_55pct.jpg",
+      "04_screenshare_70pct.jpg",
+      "04_screenshare_85pct.jpg",
+      "04_screenshare_95pct.jpg"
+    ]
+  },
+  "05_lowlight": {
+    "duration_sec": 32.57,
+    "dimensions": "1280x720",
+    "frames": [
+      {
+        "pct": 5,
+        "timestamp_sec": 1.63,
+        "detection_path": "none",
+        "faces_found": 0,
+        "confidences": [],
+        "output_file": "05_lowlight_05pct.jpg"
+      },
+      {
+        "pct": 15,
+        "timestamp_sec": 4.88,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.696
+        ],
+        "output_file": "05_lowlight_15pct.jpg"
+      },
+      {
+        "pct": 25,
+        "timestamp_sec": 8.14,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.576
+        ],
+        "output_file": "05_lowlight_25pct.jpg"
+      },
+      {
+        "pct": 40,
+        "timestamp_sec": 13.03,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.485
+        ],
+        "output_file": "05_lowlight_40pct.jpg"
+      },
+      {
+        "pct": 55,
+        "timestamp_sec": 17.91,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.395
+        ],
+        "output_file": "05_lowlight_55pct.jpg"
+      },
+      {
+        "pct": 70,
+        "timestamp_sec": 22.8,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.635
+        ],
+        "output_file": "05_lowlight_70pct.jpg"
+      },
+      {
+        "pct": 85,
+        "timestamp_sec": 27.68,
+        "detection_path": "none",
+        "faces_found": 0,
+        "confidences": [],
+        "output_file": "05_lowlight_85pct.jpg"
+      },
+      {
+        "pct": 95,
+        "timestamp_sec": 30.94,
+        "detection_path": "full",
+        "faces_found": 1,
+        "confidences": [
+          0.338
+        ],
+        "output_file": "05_lowlight_95pct.jpg"
+      }
+    ],
+    "path_counts": {
+      "short": 0,
+      "full": 6,
+      "clahe+full": 0,
+      "none": 2
+    },
+    "total_faces_detected": 6,
+    "output_files": [
+      "05_lowlight_05pct.jpg",
+      "05_lowlight_15pct.jpg",
+      "05_lowlight_25pct.jpg",
+      "05_lowlight_40pct.jpg",
+      "05_lowlight_55pct.jpg",
+      "05_lowlight_70pct.jpg",
+      "05_lowlight_85pct.jpg",
+      "05_lowlight_95pct.jpg"
+    ]
+  }
+}

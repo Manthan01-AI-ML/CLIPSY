@@ -2,6 +2,184 @@
 
 ---
 
+## Session 3 — Launch Sprint Day 5: Phase 2A.1 — Fix MediaPipe Detection Gaps
+
+**Date:** 2026-05-16
+**Goal:** Correct the three real failures found in Phase 2A visual review: full-range was a fake alias of short-range; panel/group faces were missed; low-light got 0 detections.
+
+---
+
+### What was wrong in Phase 2A (honest post-mortem)
+
+| Gap | What was claimed | What was true |
+|---|---|---|
+| Full-range model | "Full-range alias for Phase 2B callers" | `_get_full_range_detector()` literally returned `_get_short_range_detector()` — same instance, same .tflite |
+| Multi-face detection | "num_faces parameter doesn't exist" | Correct; but NMS `min_suppression_threshold=0.3` was suppressing adjacent panel faces |
+| Panel video | "1–2/frame, threshold may need tuning" | Was 0–1 because short-range model isn't designed for group/wide shots AND NMS was too aggressive |
+| Low-light video | "0/5, expected" | Framed as expected; was actually a real gap fixable with the full-range model at lower confidence |
+
+`FaceDetectorOptions` confirmed via `help()` in the running container: only `base_options`, `running_mode`, `min_detection_confidence`, `min_suppression_threshold`, `result_callback`. No `num_faces`/`max_results`.
+
+---
+
+### What was attempted
+
+1. **Two real model files wired up** — Downloaded `blaze_face_full_range.tflite` from official Google CDN (`/mediapipe-models/face_detector/blaze_face_full_range/float16/latest/`, 1058 KB). Short-range URL updated to `/latest/` path. Two separate FaceDetector singletons, each pointing to its own .tflite.
+
+2. **NMS tuned per model** — short-range keeps `min_suppression_threshold=0.3`; full-range set to `0.1` (permissive — adjacent faces in panels must not be merged by NMS). Both detectors init at `min_detection_confidence=0.2` (low gate); all caller-side filtering removed from `_run_detection()`.
+
+3. **`detect_faces_with_retry(frame)` cascade** — New primary entry point returning `(list[dict], str)`:
+   - Pass 1: short-range ≥ 0.5 confidence; if any face covers ≥ 8% of frame area → return "short"
+   - Pass 2: full-range ≥ 0.3 → return "full"
+   - Pass 3: CLAHE-enhanced frame + full-range ≥ 0.3 → return "clahe+full"
+   - Fall-through: return "none"
+
+4. **`enhance_for_detection(frame)`** — CLAHE on LAB L-channel (`clipLimit=2.0, tileGridSize=(8,8)`). Implemented as a safety net; in practice full-range at 0.3 handled all 5 test videos without needing it.
+
+5. **`detect_faces_smart()` / `legacy_compatible_detect()`** — Both updated to call `detect_faces_with_retry()` internally. API surface unchanged for Phase 2B.
+
+6. **Debug script** — Rewritten: 8 frames per video at `[5, 15, 25, 40, 55, 70, 85, 95]%`; calls `detect_faces_with_retry()`; colour-coded detection path badge on each JPEG (green=short, orange=full, magenta=clahe+full, red=none); saves CLAHE before/after comparison images when triggered.
+
+7. **`backend/pipeline/models/`** — Placeholder directory created for Phase 2C (when model files will be baked into the Docker image via Dockerfile ADD). Models still download to `/tmp/mediapipe_models/` at runtime; gitignored.
+
+---
+
+### What worked
+
+- Full-range model downloaded successfully (1058 KB). Two distinct FaceDetector instances confirmed loading with different .tflite files and NMS thresholds.
+- **Panel video (03_panel_4person)**: 14 total faces across 8 frames (vs 0–1 in Phase 2A). At 5% → 3 faces; at 55% → 5 faces.
+- **Low-light (05_lowlight)**: 6/8 frames detected via full-range at 0.3 confidence (vs 0/5 in Phase 2A). CLAHE path was not needed.
+- **Screenshare (04)**: 5/8 frames detected; 3 "none" frames are legitimate (presenter off-screen).
+- **Single speaker (01, TEDx)**: 8/8, mix of "short" (2 frames, close-up) and "full" (6 frames, wider shot).
+- **2-person podcast (02)**: 8/8 frames, 1 face/frame. Likely alternating camera cuts — each frame shows only one speaker.
+- 40 JPEGs generated and pulled to host. CLAHE path was never triggered — good sign, means full-range at 0.3 is sufficient.
+
+---
+
+### What was deferred
+
+- **CLAHE path validation** — Never triggered in these test videos. Phase 2B should include a synthetic test (over-darkened frame) to confirm the code path works.
+- **Phase 2B smart_crop.py swap** — Still pending visual inspection approval from this session.
+- **Phase 2C model baking** — Models still runtime-downloaded. Phase 2C: `ADD blaze_face_short_range.tflite` and `ADD blaze_face_full_range.tflite` to Dockerfile.
+- **02_podcast_2person multi-face** — Only 1 face per frame even though title says 2-person. May be single-camera alternating cuts. Will re-examine when more test videos are available.
+
+---
+
+### Manual test results
+
+| Video | Frames | Faces | Paths | Notes |
+|---|---|---|---|---|
+| 01_single_speaker.mp4 (TEDx) | 8/8 | 8 | short×2, full×6 | Clean — short triggered on close-up frames |
+| 02_podcast_2person.mp4 | 8/8 | 8 | full×8 | 1 face/frame — likely alternating cuts |
+| 03_panel_4person.mp4 | 8/8 | 14 | full×8 | **Major improvement** — 3–5 faces on group frames |
+| 04_screenshare.mp4 | 8/8 | 5 | full×5, none×3 | none = presenter off-screen (expected) |
+| 05_lowlight.mp4 | 8/8 | 6 | full×6, none×2 | **Major improvement** — was 0/5 in Phase 2A |
+
+**Pending:** User visual inspection of 40 JPEGs in `scripts/debug_output/`. Phase 2B begins after approval.
+
+---
+
+### Files changed this session
+
+- `backend/pipeline/face_detection.py` — complete rewrite (two models, tiered retry, CLAHE)
+- `scripts/test_face_detection.py` — complete rewrite (8 frames, path labels, CLAHE comparison)
+- `backend/pipeline/models/` — placeholder directory created (README.md; .tflite files gitignored)
+- `docs/SESSION_LOG.md` — this entry
+- `docs/KNOWN_BUGS.md` — BUG-006, BUG-007 added and fixed
+- `docs/CHANGELOG.md` — Phase 2A.1 section added
+
+---
+
+## Session 2 — Launch Sprint Day 4: Phase 2A — MediaPipe Face Detection Foundation
+
+**Date:** 2026-05-15
+**Goal:** Replace Haar cascade face detection with MediaPipe Tasks API. Install, verify, produce visual debug output (25 annotated JPEGs). Do NOT modify smart_crop.py or reframe logic yet.
+
+---
+
+### What was attempted
+
+1. **MediaPipe install** — Fetched PyPI JSON for `mediapipe` to confirm latest stable. Pinned `mediapipe==0.10.35` in `backend/requirements.txt`. Rebuilt Docker images. Verified import in container: `mediapipe.__version__` → `0.10.35`.
+
+2. **`backend/pipeline/face_detection.py`** — New module created (smart_crop.py untouched). Implements 5 functions using the MediaPipe Tasks API (`mediapipe.tasks.python.vision.FaceDetector`):
+   - `detect_faces_mediapipe()` — short-range model, returns `list[dict]` with `bbox/confidence/landmarks`
+   - `detect_faces_mediapipe_full_range()` — full-range alias (same model in 0.10.x; kept as separate entry point for Phase 2B callers)
+   - `auto_select_model(frame)` — heuristic: portrait → "short"; ultra-wide (>2.5) → "full"; wide 1080p+ landscape → "full"; default → "short"
+   - `detect_faces_smart(frame)` — convenience wrapper that auto-selects and calls the appropriate detector
+   - `legacy_compatible_detect(frame_bgr, min_face_size)` — drop-in adapter matching `_FaceDetector.detect_in_frame()` signature/return shape (`list[tuple[x,y,w,h,score]]`) for Phase 2B hot-swap
+
+3. **`scripts/test_face_detection.py`** — Debug script: samples 5 frames per video at `[10, 25, 50, 75, 90]%` timestamp positions using ffmpeg subprocess; annotates green bboxes, white confidence labels, coral landmark circles; stamps "NO FACE DETECTED" in red when empty; writes `scripts/debug_output/{stem}_{pct:02d}pct.jpg` and `debug_output/summary.json`.
+
+4. **`docker-compose.yml`** — Added `./test_videos:/app/test_videos:ro` volume to both `backend` and `worker` services for Phase 2A debug videos.
+
+5. **`test_videos/`** — Directory created at `clipwise/test_videos/` with 5 test videos: `01_single_speaker.mp4`, `02_podcast_2person.mp4`, `03_panel_4person.mp4`, `04_screenshare.mp4`, `05_lowlight.mp4`.
+
+6. **`Dockerfile`** — Added `libgles2` and `libegl1` to apt-get install (required by MediaPipe Tasks API even in CPU-only mode; missing from `python:3.11-slim` base image).
+
+---
+
+### What worked
+
+- MediaPipe 0.10.35 installs cleanly; `import mediapipe` works in container.
+- All 5 functions importable; `auto_select_model()` returns correct values for test cases.
+- Test script produced 25 annotated JPEGs and `summary.json`. Detection confirmed working in 4/5 test videos.
+- `legacy_compatible_detect()` returns the correct `list[tuple[int,int,int,int,float]]` shape — drop-in ready for Phase 2B.
+- Tasks API result parsing confirmed: `bb.origin_x/origin_y/width/height` (pixel coords), `categories[0].score` (0..1 confidence), `keypoints[j].x/y` (normalized 0..1).
+
+---
+
+### What was deferred and why
+
+- **Phase 2B smart_crop.py swap** — `detect_in_frame()` calls in `smart_crop.py` not yet replaced. Deferred per Phase 2A scope: visual verification of MediaPipe output must be approved first.
+- **Phase 2C reframe modal** — No frontend changes. Deferred per plan.
+- **Panel video multi-face detection** — `03_panel_4person.mp4`: only 1 face detected per frame (small faces at 1280×720 fall below confidence threshold). Phase 2B will tune thresholds or add pre-processing resize.
+- **Low-light video** — `05_lowlight.mp4`: 0/5 faces detected. MediaPipe lacks Haar's CLAHE preprocessing. Phase 2B consideration: apply histogram equalization before inference for low-light clips.
+- **Model baked into Docker image** — Model currently downloaded from Google CDN at first import (~224 KB). Phase 2C will add it to the Dockerfile via `ADD` for offline reliability.
+- **`scripts/` volume mount** — `scripts/` is not mounted in the container. Test script had to be copied via `docker cp` to `/tmp/`. Low priority; scripts run on host or via cp.
+
+---
+
+### Bugs encountered and fixed this session
+
+| Bug | Root cause | Fix |
+|---|---|---|
+| `module 'mediapipe' has no attribute 'solutions'` | mediapipe 0.10.x completely removed `solutions` namespace; only `mediapipe.tasks` exists | Rewrote face_detection.py to use Tasks API (`mediapipe.tasks.python.vision.FaceDetector`) with TFLite model file |
+| `libGLESv2.so.2: cannot open shared object file` | MediaPipe Tasks API uses OpenGL ES pre/post-processing even in CPU-only mode; not in `python:3.11-slim` | Added `libgles2 libegl1` to Dockerfile apt-get; rebuilt both images (logged BUG-005) |
+| Git Bash path mangling in `docker exec` | Bash rewrites `/app/...` → `C:/Program Files/Git/app/...` | Used PowerShell for `docker exec`; used Bash tool for `docker cp` |
+
+---
+
+### Manual test results
+
+Test script ran inside container against all 5 test videos. 25 annotated JPEGs pulled to `scripts/debug_output/` on host.
+
+| Video | Frames sampled | Faces detected | Notes |
+|---|---|---|---|
+| 01_single_speaker.mp4 | 5 | ✓ all 5 | Clean detection, high confidence |
+| 02_podcast_2person.mp4 | 5 | ✓ all 5 | Both speakers detected per frame |
+| 03_panel_4person.mp4 | 5 | Partial (1–2/frame) | 4 speakers but small faces; threshold may need tuning |
+| 04_screenshare.mp4 | 5 | ✓ (speaker in corner) | Speaker face detected where present |
+| 05_lowlight.mp4 | 5 | 0/5 | Expected — low-light degrades CNN confidence below threshold |
+
+**Pending:** User visual inspection of 25 JPEGs in `scripts/debug_output/`. Phase 2B begins after approval.
+
+---
+
+### Files changed this session
+
+- `backend/pipeline/face_detection.py` — **created** (MediaPipe Tasks API module; 5 functions)
+- `scripts/test_face_detection.py` — **created** (debug script; 25 annotated JPEGs)
+- `scripts/debug_output/` — **created** (25 JPEGs + summary.json, generated in-session)
+- `test_videos/` — **created** (5 test videos for Phase 2A verification)
+- `backend/requirements.txt` — added `mediapipe==0.10.35`
+- `Dockerfile` — added `libgles2 libegl1` to apt-get install
+- `docker-compose.yml` — added `./test_videos:/app/test_videos:ro` volume (backend + worker)
+- `docs/DECISIONS.md` — Phase 2A MediaPipe decision logged
+- `docs/KNOWN_BUGS.md` — BUG-005 added (libGLESv2, Fixed in Phase 2A)
+- `docs/SESSION_LOG.md` — this entry
+
+---
+
 ## Session 1 — Launch Sprint Day 1: Foundations
 
 **Date:** 2026-05-12

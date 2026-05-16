@@ -41,3 +41,7 @@ httpx==0.27.2
 # Session SC: face-aware smart cropping (Haar cascades, no GPU needed)
 opencv-python-headless==4.10.0.84
 numpy>=1.26.0
+
+# Phase 2A: MediaPipe face detection (replaces Haar cascades)
+# Latest stable as of 2026-05-15; Python 3.9–3.12 supported; CPU-only, no GPU needed
+mediapipe==0.10.35

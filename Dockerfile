@@ -2,6 +2,8 @@
 FROM python:3.11-slim
 
 # Install system deps: ffmpeg (video), fonts (for drawtext + subtitles), build tools
+# libgles2 + libegl1: required by MediaPipe Tasks API even in CPU-only mode
+# (MediaPipe uses OpenGL ES for pre/post-processing on any backend)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     build-essential \
@@ -11,6 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-noto-extra \
     fonts-dejavu \
     fonts-liberation \
+    libgles2 \
+    libegl1 \
     && fc-cache -f \
     && rm -rf /var/lib/apt/lists/*
 

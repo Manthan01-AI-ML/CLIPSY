@@ -53,6 +53,34 @@ A log of significant choices made during development — what we picked, what we
 
 ---
 
+## [2026-05-15] Face detection: MediaPipe Tasks API over Haar cascades / face_recognition / YOLO
+
+**Decision:** Replace the existing 4-cascade Haar ensemble in `smart_crop.py` with MediaPipe face detection via the Tasks API (`mediapipe.tasks.python.vision.FaceDetector`). Implementation lives in the new `backend/pipeline/face_detection.py` module.
+
+**Alternatives considered:**
+- **Haar cascades (current)** — already implemented; zero extra deps. But high false-positive rate (logos, textures), profile detection is unreliable, requires 3-pass ensemble + skin-tone filter to be usable, still misses tilted/occluded faces.
+- **`face_recognition` (dlib-based)** — excellent accuracy, face embedding + comparison built-in. Rejected: requires compiling dlib (`cmake`, build tools, 5+ min Docker build), binaries aren't available for Python 3.11 ARM builds, extremely slow on CPU (~800ms/frame vs ~30ms for MediaPipe).
+- **YOLO (Ultralytics YOLOv8-face)** — state of the art, detects faces at all angles + distances. Rejected: largest binary (~6 MB model, 200 MB PyTorch install), GPU strongly recommended for real-time speed, overkill for our single-speaker podcast use case.
+- **InsightFace (RetinaFace)** — strong contender, handles occlusion well. Rejected: 150+ MB onnxruntime models, complex setup, no official Python 3.11 wheels for CPU-only.
+- **OpenCV DNN + ResNet SSD** — fast and accurate for frontal faces, single dep. Rejected: weaker on profile/tilted faces compared to MediaPipe, less maintained.
+
+**Reason:** MediaPipe Tasks API wins on all axes for our use case:
+- **Free** — Google-maintained, Apache 2.0 license
+- **Fast** — ~30ms/frame CPU inference (vs ~200ms Haar ensemble, ~800ms dlib)
+- **Python 3.11 supported** — official wheels on PyPI (0.10.35 confirmed)
+- **No GPU needed** — CPU inference works well for our 1-4 speaker scenarios
+- **Profile + frontal** — single model handles multiple face orientations without a separate profile cascade pass
+- **Lower false positive rate** — neural model vs Haar's pattern matching on backgrounds, logos, etc.
+- **Simple install** — one pip line, model file lazy-downloaded at first use (~224 KB TFLite)
+
+**Consequences:**
+- `mediapipe==0.10.35` adds ~79 MB of transitive deps (onnxruntime, opencv-contrib-python, matplotlib, protobuf) to the Docker image. Acceptable.
+- MediaPipe Tasks API requires `libgles2` + `libegl1` system packages (OpenGL ES) even in CPU-only mode. Added to Dockerfile.
+- The `mediapipe.solutions` namespace from 0.9.x is **completely gone** in 0.10.x — only `mediapipe.tasks` exists. The module was rewritten accordingly.
+- Model file is downloaded at first import from Google CDN (~224 KB). Phase 2C will bake the model into the Docker image via Dockerfile ADD.
+
+---
+
 ## [2026-05-12] Password reset token expiry: 15 minutes
 
 **Decision:** Password reset tokens expire 15 minutes after issuance. Tokens are single-use and hashed (SHA-256) in the database — raw token only ever exists in the email link.
