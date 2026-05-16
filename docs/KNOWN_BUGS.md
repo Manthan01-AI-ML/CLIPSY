@@ -4,6 +4,17 @@
 
 ## Open
 
+### BUG-008 — High track fragmentation in `track_faces_across_frames()` on cut-heavy content
+
+**Symptom:** `01_single_speaker.mp4` (TEDx talk): 963 frames sampled at 2fps → 346 unique tracks. Expected ≤5 for a single-speaker video. `03_panel_4person.mp4`: 1401 frames → 724 tracks. Track IDs fragment on every camera cut or pan because IoU drops to 0 when the face jumps to a new screen position.
+
+**Affected area:** `backend/pipeline/active_speaker.py` — `track_faces_across_frames()` IoU matching
+**Severity:** Medium — active speaker timeline still works (falls back to `only_face`/`largest_face`/`lip_movement_dominant` correctly), but long-term track identity for "who spoke in total for how many seconds" is broken. Each cut creates a new track_id.
+**Status:** Open (Phase 2B.2 scope)
+**Notes:** Potential fixes: (1) increase `IOU_MATCH_THRESHOLD` tolerance for small movements; (2) use face embedding distance (not practical without adding a dep); (3) assign track IDs by bounding-box spatial region instead of IoU frame-to-frame. Low impact on Phase 2B.1 goal (per-second timeline), but Phase 2C needs better track continuity for clip-level speaker labelling.
+
+---
+
 ### BUG-001 — Reframe preview shows black screen
 
 **Symptom:** When the user sets a crop/reframe point in the UI, the preview panel renders black instead of showing the cropped frame.
@@ -32,10 +43,22 @@
 
 | ID | Title | Fixed | Session/Commit |
 |---|---|---|---|
+| BUG-009 | `IndexError` in `compute_active_speaker_timeline` for seconds with frames but no faces | 2026-05-16 | Session 4 |
 | BUG-003 | Forgot password: no backend endpoint | 2026-05-12 | Session 1 |
 | BUG-005 | MediaPipe requires `libgles2` + `libegl1` in Docker | 2026-05-15 | Session 2 |
 | BUG-006 | Full-range detector was an alias of short-range (same model) | 2026-05-16 | Session 3 |
 | BUG-007 | Panel/group faces missed — wrong model + aggressive NMS | 2026-05-16 | Session 3 |
+
+### BUG-009 — IndexError in `compute_active_speaker_timeline` for seconds with frames but no faces ✓ FIXED
+
+**Symptom:** When a video second had sampled frames in `face_tracking` (so `second_frames` was non-empty) but all those frames returned zero detections, `track_ids_this_second` ended up empty. The code only guarded against `len(track_ids) == 1`, not `len == 0`, so it fell through to `sorted(lip_scores.items())` on an empty dict, then crashed on `sorted_tracks[0]`.
+
+**Affected area:** `backend/pipeline/active_speaker.py` — `compute_active_speaker_timeline()`
+**Severity:** High — caused 4/5 test videos to crash at Step 3. Video 2 happened to have no such seconds and passed.
+**Status:** Fixed (Phase 2B.1, Session 4, 2026-05-16)
+**Fix:** Added guard `if len(track_ids) == 0: timeline.append({..., "reasoning": "no_faces"}); continue` before the existing `len == 1` guard.
+
+---
 
 ### BUG-006 — Full-range detector was a fake alias of short-range ✓ FIXED
 

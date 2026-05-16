@@ -2,6 +2,46 @@
 
 ---
 
+## 2026-05-16 — Session 4: Phase 2B.1 — Audio Activity + Active Speaker Detection
+
+### New files
+- `backend/pipeline/audio_activity.py` — per-second speech activity from video: audio extraction (ffmpeg), RMS energy per 100ms window, webrtcvad VAD, voice segment collapse, unified `analyze_audio_activity()` entry point
+- `backend/pipeline/active_speaker.py` — assign "who is speaking" per second: IoU-based face tracking across frames (adaptive fps: 4/2/1 based on duration), lip movement scoring (mouth Y-variance / 200 px²), `compute_active_speaker_timeline()` per-second pipeline
+- `scripts/test_active_speaker.py` — debug script: 3-row matplotlib timeline PNG per video (energy / voice activity / active speaker track), audio.json + tracks.json + speakers.json + summary.json outputs in `debug_output_2b1/`
+
+### Changed
+- `backend/requirements.txt` — added `webrtcvad==2.0.10` (compiled from source on Python 3.11, no issues) and `matplotlib>=3.5.0` (was already installed as mediapipe transitive dep, now explicit)
+
+### Fixed (in-session)
+- **IndexError in `compute_active_speaker_timeline`**: when a second's frames contained no detected faces, `track_ids_this_second` was empty, bypassing the `len==1` guard and crashing on an empty `sorted_tracks[0]`. Added `len(track_ids) == 0 → "no_faces"` guard.
+
+### MediaPipe keypoint verified (mouth = index 3)
+- Confirmed in running container (mediapipe 0.10.35): all 6 keypoints have `label=None`. Positional index 3 is mouth center. Index ordering: [0]=right_eye [1]=left_eye [2]=nose_tip [3]=mouth_center [4]=right_ear [5]=left_ear.
+
+### Test results (all 5 videos complete)
+
+**Audio activity:**
+| Video | Duration | Voice % | Segments |
+|---|---|---|---|
+| 01_single_speaker | 481.6s | 74.7% | 192 |
+| 02_podcast_2person | 705.4s | 91.6% | 212 |
+| 03_panel_4person | 700.3s | 94.2% | 95 |
+| 04_screenshare | 265.9s | 97.9% | 32 |
+| 05_lowlight | 32.6s | 57.7% | 13 |
+
+**Active speaker reasoning breakdown:**
+| Video | audio_inactive | no_faces | only_face | lip_dominant | largest_face |
+|---|---|---|---|---|---|
+| 01_single_speaker | 26 | 7 | 298 | 13 | 138 |
+| 02_podcast_2person | 4 | 0 | 511 | 75 | 116 |
+| 03_panel_4person | 20 | 8 | 383 | 85 | 205 |
+| 04_screenshare | 0 | 89 | 115 | 52 | 10 |
+| 05_lowlight | 4 | 7 | 13 | 8 | 1 |
+
+5 timeline PNGs generated at 200 DPI in `scripts/debug_output_2b1/` — awaiting user review.
+
+---
+
 ## 2026-05-16 — Session 3: Phase 2A.1 — Fix MediaPipe Detection Gaps
 
 ### Fixed

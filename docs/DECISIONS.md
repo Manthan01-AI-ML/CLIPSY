@@ -81,6 +81,53 @@ A log of significant choices made during development — what we picked, what we
 
 ---
 
+## [2026-05-16] Voice Activity Detection: webrtcvad over silero-vad / pyannote / custom energy threshold
+
+**Decision:** Use `webrtcvad==2.0.10` (Google's WebRTC VAD Python binding) for per-100ms voice/silence classification.
+
+**Alternatives considered:**
+- **Custom energy threshold** — already have `compute_audio_energy()`; could just threshold at 0.05. Rejected: energy thresholds fire on music, background noise, and room tone. A talking-head clip with music intro gives 100% "voice" on energy alone. webrtcvad uses a statistical speech model that ignores non-speech sounds.
+- **silero-vad** — state-of-the-art neural VAD (~1.8 MB model), PyTorch-based, excellent accuracy, works on 8kHz or 16kHz. Rejected: adds PyTorch as a dependency (~700 MB Docker layer). We're deliberately avoiding PyTorch — faster-whisper uses CTranslate2 specifically for this reason. Not worth the layer cost for a VAD pass.
+- **pyannote.audio** — full speaker diarization (VAD + speaker ID in one). Rejected: requires Hugging Face token + model acceptance agreement, complex pipeline setup, and adds several hundred MB of deps. Far more than we need for the binary "is someone talking" classification.
+- **ffmpeg silencedetect filter** — already used in `silence.py`. Rejected: designed for detecting long silent gaps (e.g. `d=0.8` means 0.8s minimum silence). Too coarse for 100ms windowing; can't get per-window boolean output from the text-parsing approach.
+
+**Reason:** webrtcvad is a single C extension with no heavy dependencies. It's the same VAD algorithm used in WebRTC (Chrome, Firefox, Zoom) — battle-tested for telephone/podcast audio. 30ms frame size at 16kHz is low-latency and aligns neatly with our 100ms window (3 frames per window, >50% = voice). Aggressiveness 2 is the recommended middle ground for podcast/talking-head content.
+
+**Consequences:** webrtcvad requires exactly 16kHz / 16-bit signed PCM / mono. Our ffmpeg extraction already produces this format (matching `transcribe.py`). The C extension must compile from source — confirmed working with build-essential on Python 3.11.
+
+---
+
+## [2026-05-16] Active speaker: lip movement + IoU tracking over diarization or speaker embedding
+
+**Decision:** Determine the active speaker per second using (1) IoU-based face track IDs across sampled frames, (2) lip Y-coordinate variance as a lip movement proxy, and (3) a 1.5× dominance ratio to declare a clear winner before falling back to largest-face.
+
+**Alternatives considered:**
+- **Speaker diarization (pyannote.audio)** — maps audio segments to speaker IDs. Rejected: adds PyTorch + Hugging Face deps (see webrtcvad decision). Also can't tell WHICH face is speaking — just that there are N speakers. Would need to be fused with face tracking anyway.
+- **Speaker embedding distance (speechbrain / x-vectors)** — cluster audio segments by speaker embedding, then match clusters to faces. Rejected: same dependency problem, and requires enough audio per speaker to build a reliable embedding.
+- **Mouth open/close detection** — landmark-based: measure vertical distance between upper/lower lip keypoints. Rejected: MediaPipe FaceDetector only provides 6 keypoints (eye, eye, nose, mouth-center, ear, ear). No separate upper/lower lip points. Would need FaceLandmarker (468 landmarks) which is a different Tasks API task class.
+- **Active Audio Zone** — divide screen into regions, assign audio energy to screen zones, match to face regions. Rejected: only makes sense for static multi-camera setups, not for talking-head/podcast cuts.
+
+**Reason:** Lip movement via Y-coordinate variance is a reliable proxy for "is this face speaking" without any additional model or dependency. Mouth center moves down when speaking; the variance across recent frames captures this signal. The 200 px² normalizer (≈14px std dev = clearly talking) is calibrated for 720p–1080p footage where faces typically occupy 10–30% of frame height.
+
+**Consequences:** The approach degrades for: (1) off-camera speakers (face not visible), (2) speakers who speak without visible jaw movement (rare), (3) very fast cuts where IoU breaks track continuity (high track count, forces `only_face` fallback). For single-speaker talking-head content the `only_face` path handles it perfectly. Multi-speaker content with active lip movement works well.
+
+---
+
+## [2026-05-16] Adaptive sample_fps: duration-based (4/2/1) over fixed frame cap
+
+**Decision:** `track_faces_across_frames()` samples at 4fps for videos ≤300s, 2fps for 300–900s, 1fps for >900s.
+
+**Alternatives considered:**
+- **Fixed cap (1200 frames max)** — initial proposal; truncates long videos so the tail is never analyzed. A 20-minute podcast would only cover the first 5 minutes at 4fps. Rejected by user.
+- **Fixed 1fps always** — covers full video for any length but misses inter-second speaker switches for short clips.
+- **Frame count-based decimation** — sample every N frames until total = target count. Equivalent to a duration-based rate, just expressed differently.
+
+**Reason:** User explicitly changed from fixed-cap to duration-based adaptive: short content gets high temporal resolution for smooth lip tracking; long content accepts lower resolution to keep run time reasonable while still covering the full timeline. Covers content from 30-second clips to feature-length (1hr+) videos.
+
+**Consequences:** A 30-minute video at 1fps = 1800 frames = ~36 minutes of face tracking. For Phase 2B production use, the output of `track_faces_across_frames()` should be cached after first computation.
+
+---
+
 ## [2026-05-12] Password reset token expiry: 15 minutes
 
 **Decision:** Password reset tokens expire 15 minutes after issuance. Tokens are single-use and hashed (SHA-256) in the database — raw token only ever exists in the email link.

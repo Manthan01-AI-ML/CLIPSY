@@ -1,0 +1,120 @@
+{
+  "01_single_speaker": {
+    "status": "ok",
+    "files": [
+      "01_single_speaker_audio.json",
+      "01_single_speaker_tracks.json",
+      "01_single_speaker_speakers.json",
+      "01_single_speaker_timeline.png"
+    ],
+    "duration_sec": 481.559,
+    "window_count": 4816,
+    "voice_windows": 3596,
+    "voice_pct": 74.7,
+    "voice_segments": 192,
+    "sampled_frames": 963,
+    "total_detections": 974,
+    "unique_tracks": 346,
+    "reasoning_counts": {
+      "no_faces": 7,
+      "largest_face": 138,
+      "only_face": 298,
+      "audio_inactive": 26,
+      "lip_movement_dominant": 13
+    }
+  },
+  "02_podcast_2person": {
+    "status": "ok",
+    "files": [
+      "02_podcast_2person_audio.json",
+      "02_podcast_2person_tracks.json",
+      "02_podcast_2person_speakers.json",
+      "02_podcast_2person_timeline.png"
+    ],
+    "duration_sec": 705.399,
+    "window_count": 7054,
+    "voice_windows": 6464,
+    "voice_pct": 91.6,
+    "voice_segments": 212,
+    "sampled_frames": 1411,
+    "total_detections": 1529,
+    "unique_tracks": 296,
+    "reasoning_counts": {
+      "audio_inactive": 4,
+      "only_face": 511,
+      "largest_face": 116,
+      "lip_movement_dominant": 75
+    }
+  },
+  "03_panel_4person": {
+    "status": "ok",
+    "files": [
+      "03_panel_4person_audio.json",
+      "03_panel_4person_tracks.json",
+      "03_panel_4person_speakers.json",
+      "03_panel_4person_timeline.png"
+    ],
+    "duration_sec": 700.267,
+    "window_count": 7003,
+    "voice_windows": 6594,
+    "voice_pct": 94.2,
+    "voice_segments": 95,
+    "sampled_frames": 1401,
+    "total_detections": 1898,
+    "unique_tracks": 724,
+    "reasoning_counts": {
+      "no_faces": 8,
+      "only_face": 383,
+      "largest_face": 205,
+      "lip_movement_dominant": 85,
+      "audio_inactive": 20
+    }
+  },
+  "04_screenshare": {
+    "status": "ok",
+    "files": [
+      "04_screenshare_audio.json",
+      "04_screenshare_tracks.json",
+      "04_screenshare_speakers.json",
+      "04_screenshare_timeline.png"
+    ],
+    "duration_sec": 265.892,
+    "window_count": 2659,
+    "voice_windows": 2604,
+    "voice_pct": 97.9,
+    "voice_segments": 32,
+    "sampled_frames": 1064,
+    "total_detections": 810,
+    "unique_tracks": 95,
+    "reasoning_counts": {
+      "only_face": 115,
+      "largest_face": 10,
+      "lip_movement_dominant": 52,
+      "no_faces": 89
+    }
+  },
+  "05_lowlight": {
+    "status": "ok",
+    "files": [
+      "05_lowlight_audio.json",
+      "05_lowlight_tracks.json",
+      "05_lowlight_speakers.json",
+      "05_lowlight_timeline.png"
+    ],
+    "duration_sec": 32.554,
+    "window_count": 326,
+    "voice_windows": 188,
+    "voice_pct": 57.7,
+    "voice_segments": 13,
+    "sampled_frames": 130,
+    "total_detections": 93,
+    "unique_tracks": 20,
+    "reasoning_counts": {
+      "audio_inactive": 4,
+      "no_faces": 7,
+      "only_face": 13,
+      "lip_movement_dominant": 8,
+      "largest_face": 1
+    }
+  }
+}

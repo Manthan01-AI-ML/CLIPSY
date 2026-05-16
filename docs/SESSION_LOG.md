@@ -2,6 +2,105 @@
 
 ---
 
+## Session 4 — Launch Sprint Day 6: Phase 2B.1 — Audio Activity + Active Speaker Detection
+
+**Date:** 2026-05-16
+**Goal:** Build the audio VAD + lip-movement active-speaker pipeline: `audio_activity.py`, `active_speaker.py`, debug script `test_active_speaker.py`. No changes to `smart_crop.py`, `reframe.py`, or frontend.
+
+---
+
+### Pre-work findings (informed implementation)
+
+1. **webrtcvad 2.0.10** — Verified on PyPI; compiled cleanly in container (Python 3.11, build-essential already present). Requires exactly 16kHz / 16-bit signed PCM / mono. Valid frame sizes: 10/20/30ms. At 16kHz: 30ms = 480 samples = 960 bytes.
+
+2. **Audio extraction format** — `transcribe.py`'s `extract_audio()` already uses `-vn -ac 1 -ar 16000 -acodec pcm_s16le`, which is the exact format webrtcvad requires. Reused identical flags.
+
+3. **MediaPipe keypoint index 3 = mouth center** — Verified in container. All 6 keypoints have `label=None`; must use positional index. Index 3 was confirmed mouth center by printing raw keypoint coordinates against a known face image.
+
+4. **silence.py has no reusable VAD logic** — Uses ffmpeg's built-in `silencedetect` filter and parses stderr text. No Python-level signal reading. Built VAD from scratch with webrtcvad.
+
+5. **Adaptive sample_fps** — Per user adjustment: `duration ≤ 300s → fps=4; 300-900s → fps=2; >900s → fps=1`. Covers the full video at lower temporal resolution for long videos.
+
+---
+
+### What was attempted
+
+1. **`backend/pipeline/audio_activity.py`** — NEW. Key components:
+   - `extract_audio_track()` — identical ffmpeg flags to `transcribe.py`; raises `AudioActivityError` (never silent fail)
+   - `compute_audio_energy()` — `wave` module + numpy RMS per 100ms window, normalized 0–1 by max window energy
+   - `detect_voice_activity()` — webrtcvad at 30ms frames, aggregated into 100ms windows (>50% frames voice → window True)
+   - `_collapse_voice_windows()` — collapses adjacent True windows into `(start_sec, end_sec)` pairs
+   - `analyze_audio_activity()` — main entry point; temp WAV in `/tmp/` with `finally` cleanup; returns unified dict
+
+2. **`backend/pipeline/active_speaker.py`** — NEW. Key components:
+   - `_adaptive_sample_fps(duration_sec)` — returns 4/2/1 fps based on video duration thresholds
+   - `_iou(b1, b2)` — intersection over union for `(x,y,w,h)` boxes; used for face track linking
+   - `compute_lip_movement_score(landmarks_history)` — variance of mouth Y-coord (index 3) across frames, normalized by 200 px²
+   - `track_faces_across_frames(video_path)` — adaptive fps, IoU linking at 0.5 threshold, logs every 50 frames + chosen fps at start
+   - `compute_active_speaker_timeline(face_tracking, audio_activity)` — per-second: audio active? → 1-face? → lip dominance (1.5× ratio) → largest face fallback
+
+3. **`scripts/test_active_speaker.py`** — NEW. For each video: analyze audio → track faces (cached from JSON if present) → compute speakers → generate 3-row matplotlib timeline PNG (energy, voice activity, speaker per second). Outputs to `debug_output_2b1/`.
+
+4. **`backend/requirements.txt`** — Added `webrtcvad==2.0.10` and `matplotlib>=3.5.0` (matplotlib was already installed as a mediapipe transitive dep, but now explicit).
+
+---
+
+### Bugs encountered and fixed this session
+
+| Bug | Root cause | Fix |
+|---|---|---|
+| `IndexError: list index out of range` in `compute_active_speaker_timeline` | When a second has `second_frames` with no faces, `track_ids_this_second` is empty; code fell through the `len==1` guard to the lip-score sort on an empty dict | Added `len(track_ids) == 0` guard returning `"no_faces"` before the `len == 1` guard |
+
+---
+
+### What worked (confirmed — all 5 videos complete)
+
+- `webrtcvad==2.0.10` compiled from source on Python 3.11 in container. No issues.
+- `matplotlib 3.10.9` already installed as mediapipe transitive dep.
+- Full pipeline end-to-end: audio → tracks (cached) → speakers → PNG for all 5 videos.
+
+**Audio activity results:**
+| Video | Duration | Windows | Voice % | Segments |
+|---|---|---|---|---|
+| 01_single_speaker | 481.6s | 4816 | 74.7% | 192 |
+| 02_podcast_2person | 705.4s | 7054 | 91.6% | 212 |
+| 03_panel_4person | 700.3s | 7003 | 94.2% | 95 |
+| 04_screenshare | 265.9s | 2659 | 97.9% | 32 |
+| 05_lowlight | 32.6s | 326 | 57.7% | 13 |
+
+**Active speaker timeline results:**
+| Video | Seconds | audio_inactive | no_faces | only_face | lip_dominant | largest_face |
+|---|---|---|---|---|---|---|
+| 01_single_speaker | 482 | 26 | 7 | 298 | 13 | 138 |
+| 02_podcast_2person | 706 | 4 | 0 | 511 | 75 | 116 |
+| 03_panel_4person | 701 | 20 | 8 | 383 | 85 | 205 |
+| 04_screenshare | 266 | 0 | 89 | 115 | 52 | 10 |
+| 05_lowlight | 33 | 4 | 7 | 13 | 8 | 1 |
+
+**5 timeline PNGs generated** at dpi=200 (456–1043 KB each). Pulled to `scripts/debug_output_2b1/`.
+
+---
+
+### What was deferred
+
+- **Timeline PNG user inspection** — 5 PNGs pending user review before Phase 2B.2
+- **High track fragmentation** — 346 unique tracks for single-speaker video, 724 for panel (logged as BUG-008). Camera cuts break IoU continuity. No impact on per-second speaker timeline (works correctly), but Phase 2C clip-level labelling will need better track stitching.
+
+---
+
+### Files changed this session
+
+- `backend/pipeline/audio_activity.py` — **created** (AudioActivityError, 4 public functions)
+- `backend/pipeline/active_speaker.py` — **created** (ActiveSpeakerError, 5 public functions)
+- `scripts/test_active_speaker.py` — **created** (3-row timeline PNG, JSON outputs, track caching)
+- `backend/requirements.txt` — added `webrtcvad==2.0.10`, `matplotlib>=3.5.0`
+- `docs/SESSION_LOG.md` — this entry
+- `docs/CHANGELOG.md` — Phase 2B.1 section added
+- `docs/DECISIONS.md` — webrtcvad VAD library choice logged
+- `docs/KNOWN_BUGS.md` — IndexError bug found and fixed in-session
+
+---
+
 ## Session 3 — Launch Sprint Day 5: Phase 2A.1 — Fix MediaPipe Detection Gaps
 
 **Date:** 2026-05-16

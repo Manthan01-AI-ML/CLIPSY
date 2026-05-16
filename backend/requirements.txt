@@ -45,3 +45,7 @@ numpy>=1.26.0
 # Phase 2A: MediaPipe face detection (replaces Haar cascades)
 # Latest stable as of 2026-05-15; Python 3.9–3.12 supported; CPU-only, no GPU needed
 mediapipe==0.10.35
+
+# Phase 2B.1: Audio activity + active speaker detection
+webrtcvad==2.0.10      # Google WebRTC VAD (C extension — build-essential already in Dockerfile)
+matplotlib>=3.5.0      # Timeline visualization for debug scripts
