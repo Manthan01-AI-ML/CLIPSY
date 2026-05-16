@@ -1826,7 +1826,7 @@ def get_source_clip_preview(
 
 @router.get(
     "/{clip_id}/auto-keyframes",
-    summary="One-click auto-keyframes: pre-compute keyframes from per-time speaker detection",
+    summary="One-click auto-keyframes: active-speaker pipeline with debounced speaker-change events",
 )
 def auto_keyframes_endpoint(
     clip_id: uuid.UUID,
@@ -1834,14 +1834,23 @@ def auto_keyframes_endpoint(
     db: Session = Depends(get_db),
 ):
     """
-    Returns a ready-to-use list of keyframes computed from speaker detection
-    sampled across the clip timeline. Frontend can apply these directly with
-    one button click — user can then fine-tune.
+    Returns keyframes derived from the Phase 2B active-speaker pipeline:
+      audio VAD → face tracking → per-second speaker → debounced change events → keyframes.
+
+    Keyframes are clip-relative (t=0 is clip start) and ready for direct use via
+    the existing POST /reframe endpoint. Frontend can apply with one click; user
+    can fine-tune afterwards.
+
+    Diagnostics field is always present and surfaces pipeline telemetry for debugging.
     """
     from backend.models.video import VideoJob
-    from backend.pipeline.smart_crop import (
-        auto_keyframes_from_detection, get_video_dimensions,
+    from backend.pipeline.smart_crop import get_video_dimensions
+    from backend.pipeline.audio_activity import analyze_audio_activity
+    from backend.pipeline.active_speaker import (
+        track_faces_across_frames,
+        compute_active_speaker_timeline,
     )
+    from backend.pipeline.conversation_pace import place_adaptive_keyframes
 
     clip = (
         db.query(Clip)
@@ -1862,24 +1871,43 @@ def auto_keyframes_endpoint(
     if sw == 0 or sh == 0:
         raise HTTPException(500, detail="Could not probe source")
 
-    start = float(clip.start_sec or 0)
+    start    = float(clip.start_sec or 0)
     duration = float(clip.duration_sec or (clip.end_sec - clip.start_sec) or 30)
+    clip_end = start + duration
 
     try:
-        keyframes = auto_keyframes_from_detection(
-            source_video=source_path,
-            clip_start=start, clip_duration=duration,
-            source_width=sw, source_height=sh,
+        audio_activity   = analyze_audio_activity(source_path, job_id=str(clip_id))
+        face_tracking    = track_faces_across_frames(source_path)
+        speaker_timeline = compute_active_speaker_timeline(face_tracking, audio_activity)
+        keyframes        = place_adaptive_keyframes(
+            speaker_timeline,
+            face_tracking,
+            clip_start_sec=start,
+            clip_end_sec=clip_end,
+            source_width=sw,
+            source_height=sh,
         )
     except Exception as e:
-        logger.exception(f"[clip {clip_id}] auto-keyframes failed")
+        logger.exception(f"[clip {clip_id}] auto-keyframes pipeline failed")
         return {
-            "clip_id": str(clip_id),
-            "keyframes": [],
+            "clip_id":        str(clip_id),
+            "keyframes":      [],
             "detection_error": str(e)[:200],
+            "diagnostics":    {},
         }
 
+    is_voice = audio_activity.get("is_voice", [])
+    voice_pct = round(100 * sum(is_voice) / max(1, len(is_voice)), 1)
+
     return {
-        "clip_id": str(clip_id),
+        "clip_id":  str(clip_id),
         "keyframes": keyframes,
+        "diagnostics": {
+            "source_duration_sec":  round(audio_activity.get("duration_sec", 0), 1),
+            "voice_pct":            voice_pct,
+            "timeline_seconds":     len(speaker_timeline),
+            "keyframes_placed":     len(keyframes),
+            "source_wh":            [sw, sh],
+            "clip_range_sec":       [round(start, 3), round(clip_end, 3)],
+        },
     }

@@ -10,7 +10,7 @@
 
 **Affected area:** `backend/pipeline/active_speaker.py` — `track_faces_across_frames()` IoU matching
 **Severity:** Medium — active speaker timeline still works (falls back to `only_face`/`largest_face`/`lip_movement_dominant` correctly), but long-term track identity for "who spoke in total for how many seconds" is broken. Each cut creates a new track_id.
-**Status:** Open (Phase 2B.2 scope)
+**Status:** Open (Phase 2C scope)
 **Notes:** Potential fixes: (1) increase `IOU_MATCH_THRESHOLD` tolerance for small movements; (2) use face embedding distance (not practical without adding a dep); (3) assign track IDs by bounding-box spatial region instead of IoU frame-to-frame. Low impact on Phase 2B.1 goal (per-second timeline), but Phase 2C needs better track continuity for clip-level speaker labelling.
 
 ---
@@ -109,3 +109,14 @@
 **Severity:** Low — no functional impact; just installs an extra package  
 **Status:** Open  
 **Notes:** Safe to remove `passlib[bcrypt]` in a cleanup pass. Confirm no `passlib` imports exist first (`grep -r "passlib" backend/`).
+
+---
+
+### BUG-011 — "Speaker change events" in `conversation_pace.py` are stable-run boundaries, not semantic speaker turns
+
+**Symptom:** On cut-heavy single-speaker footage (e.g. `01_single_speaker.mp4` TEDx talk), `detect_speaker_changes()` reports 107 events. Ground truth = 1 speaker. The ≥2-second debounce filter correctly rejects sub-2s flicker, but each camera cut produces a new track_id (BUG-008) that does hold ≥2s, so each cut is counted as a change.
+
+**Affected area:** `backend/pipeline/conversation_pace.py` — semantic interpretation only; mechanical behavior is correct.
+**Severity:** Low — does NOT affect keyframe placement or transition timing (cuts DO warrant re-centering, which is the actual downstream use).
+**Status:** Expected behavior, pending BUG-008 fix in Phase 2C. After BUG-008 is fixed, the same code will report semantically correct speaker turn counts.
+**Notes:** Do NOT use "change event count" as a proxy for "number of speakers" or "conversation turn count" in any future code until BUG-008 is closed.

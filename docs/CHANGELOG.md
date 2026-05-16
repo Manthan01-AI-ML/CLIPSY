@@ -2,6 +2,32 @@
 
 ---
 
+## 2026-05-16 — Session 5: Phase 2B.2 — Conversation Pace Classifier + Adaptive Keyframes
+
+### New files
+- `backend/pipeline/conversation_pace.py` — debounced speaker-change detection (`detect_speaker_changes`, `min_hold_seconds=2`), 10-second rolling pace window (`classify_pace_window`, `compute_pace_timeline`), adaptive keyframe placement at change events (`place_adaptive_keyframes`, 1.5s minimum dwell, clip-relative `t`, `x_pct/y_pct` from bbox centre average)
+- `scripts/test_conversation_pace.py` — loads Phase 2B.1 JSON outputs, runs all 4 functions, produces 4-row timeline PNG per video + `{stem}_pace.json` + `{stem}_keyframes.json` + `summary.json` in `debug_output_2b2/`
+
+### Changed
+- `backend/api/routes/clips.py` — `auto_keyframes_endpoint`: replaced Haar-based `smart_crop.auto_keyframes_from_detection()` with the Phase 2B active-speaker pipeline (`analyze_audio_activity → track_faces_across_frames → compute_active_speaker_timeline → place_adaptive_keyframes`); added `diagnostics` dict to response
+- `docs/KNOWN_BUGS.md` — BUG-008 status corrected from "Phase 2B.2 scope" to "Phase 2C scope"
+
+### Test results (5 videos, loading Phase 2B.1 cached JSON)
+
+| Video | Duration | Changes | Slow | Medium | Fast | Keyframes |
+|---|---|---|---|---|---|---|
+| 01_single_speaker | 482s | 107 | 244s | 238s | 0s | 108 |
+| 02_podcast_2person | 706s | 121 | 495s | 211s | 0s | 122 |
+| 03_panel_4person | 701s | 169 | 299s | 401s | 1s | 170 |
+| 04_screenshare | 266s | 13 | 262s | 4s | 0s | 14 |
+| 05_lowlight | 33s | 4 | 27s | 6s | 0s | 5 |
+
+High change counts for videos 1–3 are BUG-008 (track fragmentation on camera cuts) — deferred to Phase 2C. Podcast video correctly alternates x_pct ~0.33 ↔ ~0.67 for left/right speakers.
+
+16 output files pulled to `scripts/debug_output_2b2/` — awaiting user review.
+
+---
+
 ## 2026-05-16 — Session 4: Phase 2B.1 — Audio Activity + Active Speaker Detection
 
 ### New files

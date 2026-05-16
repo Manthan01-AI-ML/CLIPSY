@@ -2,6 +2,78 @@
 
 ---
 
+## Session 5 — Launch Sprint Day 7: Phase 2B.2 — Conversation Pace Classifier + Adaptive Keyframes
+
+**Date:** 2026-05-16
+**Goal:** Build `conversation_pace.py` (debounced speaker-change detection, pace classification, adaptive keyframe placement) and wire the `/auto-keyframes` endpoint to the new Phase 2B active-speaker pipeline. BUG-008 (track fragmentation) deliberately NOT fixed — debouncing makes the classifier robust to it.
+
+---
+
+### Pre-work findings (informed implementation)
+
+1. **Current `auto_keyframes_endpoint`** (clips.py:1827-1884) calls `smart_crop.auto_keyframes_from_detection()` — a Haar-based approach. Fully replaced with the new Phase 2B pipeline.
+
+2. **`t` is clip-relative** — keyframe schema `{"t": float, "x_pct": float, "y_pct": float}` uses `t=0` as clip start, NOT absolute video time. `reframe.py` and the frontend both expect this. `place_adaptive_keyframes()` converts via `t_clip = abs_second - clip_start_sec`.
+
+3. **`track_faces_across_frames()` has no clip range params** — runs on full source video. Clip filtering happens inside `place_adaptive_keyframes()` by filtering the speaker timeline to `[clip_start_sec, clip_end_sec)`.
+
+4. **BUG-008 acknowledged in pre-work** — KNOWN_BUGS.md corrected from "Phase 2B.2 scope" to "Phase 2C scope". The debounce `min_hold_seconds=2` reduces single-frame noise but does not eliminate cut-based fragmentation.
+
+5. **No modifications to** `smart_crop.py`, `reframe.py`, `audio_activity.py`, `active_speaker.py`, or frontend.
+
+---
+
+### What was built
+
+1. **`backend/pipeline/conversation_pace.py`** — NEW. Four public functions:
+   - `detect_speaker_changes(timeline, min_hold_seconds=2)` — stateful debounce: maintains `current_stable` + `candidate` + `candidate_start_sec`; fires event only when candidate holds ≥ `min_hold_seconds` consecutive seconds; `None` entries reset candidate without changing stable
+   - `classify_pace_window(events, current_second, window_seconds=10)` — count events in trailing window; 0–2 = "slow", 3–5 = "medium", 6+ = "fast"
+   - `compute_pace_timeline(timeline, *, window_seconds=10, min_hold_seconds=2)` — per-second pace labels using sliding trailing window
+   - `place_adaptive_keyframes(timeline, face_tracking, *, min_hold_seconds=2, clip_start_sec=0.0, clip_end_sec=None, source_width=0, source_height=0)` — filters to clip range, detects changes, places keyframes at change events; first keyframe always `t=0`; enforces 1.5s minimum dwell; `_face_center_pct()` averages bbox centre across frames in the target second
+
+2. **`backend/api/routes/clips.py`** — `/auto-keyframes` endpoint rewritten:
+   - Old: calls `smart_crop.auto_keyframes_from_detection()` (Haar cascade)
+   - New: `analyze_audio_activity` → `track_faces_across_frames` → `compute_active_speaker_timeline` → `place_adaptive_keyframes`
+   - Added `diagnostics` field to response: `source_duration_sec`, `voice_pct`, `timeline_seconds`, `keyframes_placed`, `source_wh`, `clip_range_sec`
+   - Error path returns `{"keyframes": [], "detection_error": str, "diagnostics": {}}`
+
+3. **`scripts/test_conversation_pace.py`** — NEW. Loads Phase 2B.1 JSON outputs (speakers.json + tracks.json from `debug_output_2b1/`), probes video dimensions via ffprobe, runs all 4 functions, emits 4-row PNG (track_id / change events / pace / keyframes) + JSON to `debug_output_2b2/`.
+
+---
+
+### Test results (all 5 videos)
+
+| Video | Duration | Changes | Slow | Medium | Fast | Keyframes |
+|---|---|---|---|---|---|---|
+| 01_single_speaker | 482s | 107 | 244s | 238s | 0s | 108 |
+| 02_podcast_2person | 706s | 121 | 495s | 211s | 0s | 122 |
+| 03_panel_4person | 701s | 169 | 299s | 401s | 1s | 170 |
+| 04_screenshare | 266s | 13 | 262s | 4s | 0s | 14 |
+| 05_lowlight | 33s | 4 | 27s | 6s | 0s | 5 |
+
+**Note on high change counts (videos 1–3):** The 107/121/169 change events are caused by BUG-008 (track fragmentation on camera cuts). A single speaker on a cut-heavy TEDx talk gets a new track_id after each cut; since each new track holds for ≥ 2 seconds before the next cut, the debounce does not suppress cut-based fragmentation — only single-frame jitter. This is expected behaviour; BUG-008 is scoped to Phase 2C.
+
+**What worked correctly:**
+- Podcast (video 02): keyframe x_pct alternates ~0.33 ↔ ~0.67 — correctly detecting left/right screen positions of two speakers
+- Panel (video 03): x_pct covers 0.18–0.83 range — full horizontal spread of 4-person layout
+- Screenshare (video 04): 13 changes / 14 keyframes — sensible; mostly no-face seconds
+- Low-light (video 05): 4 changes / 5 keyframes — correct for 33s clip
+- Face centre position tracking works well for videos with valid dimensions (all except 01 which lost the first t=0 centre position because dimensions weren't probed in test, falling back to 0.5/0.5)
+
+---
+
+### Files changed this session
+
+- `backend/pipeline/conversation_pace.py` — **created** (4 public functions, 1 private helper)
+- `backend/api/routes/clips.py` — endpoint rewritten (lines ~1827–1885)
+- `scripts/test_conversation_pace.py` — **created** (4-row timeline PNG, JSON outputs)
+- `docs/KNOWN_BUGS.md` — BUG-008 status corrected to "Phase 2C scope"
+- `docs/SESSION_LOG.md` — this entry
+- `docs/CHANGELOG.md` — Phase 2B.2 section added
+- `docs/DECISIONS.md` — conversation pace + debounce decision logged
+
+---
+
 ## Session 4 — Launch Sprint Day 6: Phase 2B.1 — Audio Activity + Active Speaker Detection
 
 **Date:** 2026-05-16

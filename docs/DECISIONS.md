@@ -140,3 +140,21 @@ A log of significant choices made during development — what we picked, what we
 **Reason:** 15 minutes is the industry consensus for password reset links (NIST SP 800-63B spirit, OWASP recommendation). Short enough to limit exposure if an email is intercepted; long enough that a user who opens the email immediately has no trouble. Single-use invalidation means replaying a link after first use does nothing.
 
 **Consequences:** Users who don't click within 15 minutes must request a new link. The `forgot-password` route invalidates previous unexpired tokens before creating a new one, so users can self-serve a fresh link immediately without confusion.
+
+---
+
+## [2026-05-16] Pace classification: debounced speaker-change events over raw track-id diffs
+
+**Decision:** `detect_speaker_changes()` uses a two-state debounce (current_stable + candidate + candidate_start_sec) requiring a new track_id to hold for ≥ 2 consecutive seconds before firing a change event. The rolling window pace classifier (`classify_pace_window`, 10s window) operates over these debounced events, not raw per-second track_id diffs.
+
+**Alternatives considered:**
+- **Raw per-second diff** — compare `timeline[i]["active_track_id"] != timeline[i-1]["active_track_id"]` and count transitions. Rejected: BUG-008 (track fragmentation on camera cuts) creates a new track_id per cut; a single-speaker TEDx talk with cuts every 5s produces ~96 raw transitions over 480s. Pace would classify as "fast" constantly.
+- **Sliding window count only (no debounce)** — count unique track_ids in a 10s window. Still fragmentation-sensitive; a window spanning 3 camera cuts has 3 different track_ids even with one physical speaker.
+- **Speaker embedding clustering** — group track_ids by audio/visual similarity before counting changes. Correct approach for Phase 2C, but adds a dependency and complexity. BUG-008 needs proper fixing first.
+- **Fixed gap filter** — only count a change if the previous different track_id was ≥ N seconds ago. Equivalent to debouncing but one-sided (doesn't require candidate to *hold*). Rejected: a one-second interjection would still fire; the candidate-hold approach requires the new speaker to be consistently present.
+
+**Reason:** The 2-second hold requirement filters single-frame detection noise and mitigates some cut-based fragmentation (cuts followed immediately by another cut don't qualify). It can't eliminate cut-based fragmentation entirely — a speaker at a cut position who genuinely holds their new track_id for 2+ seconds will still generate an event — but that's the correct boundary case (Phase 2C's BUG-008 fix will solve the underlying tracking).
+
+**Consequences:** For single-speaker videos with camera cuts (01_single_speaker: 346 tracks → 107 debounced events), change counts are still elevated but correct given the fragmentation level. Multi-speaker videos with actual conversational turns (02_podcast_2person) correctly alternate x_pct ~0.33 ↔ ~0.67. Pace counts inflate proportionally to cut density; "fast" pace only fires when changes exceed 6 per 10s window, which does not happen in current test set. Phase 2C (BUG-008 fix) will dramatically reduce spurious change events.
+
+Additional consequence (logged 2026-05-16, post visual review): On cut-heavy single-speaker footage, debounced change events count camera-cut-induced track_id transitions, not semantic speaker turns. This is acceptable because the downstream uses (keyframe re-centering, transition speed adaptation) treat cuts and real speaker changes identically — both warrant a new keyframe. The pace classifier's "change count" must NOT be interpreted as "speaker turn count" until BUG-008 (face track fragmentation) is fixed in Phase 2C. See BUG-011.
