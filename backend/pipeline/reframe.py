@@ -40,13 +40,19 @@ def normalize_user_crop(user_crop: dict | None) -> dict | None:
         clean = []
         for kf in kfs:
             try:
-                clean.append({
+                entry = {
                     "t": float(kf["t"]),
                     "x_pct": float(kf["x_pct"]),
                     "y_pct": float(kf.get("y_pct", 0.5)),
-                })
+                }
             except (KeyError, TypeError, ValueError):
                 continue
+            if "transition_dur_in" in kf:
+                try:
+                    entry["transition_dur_in"] = float(kf["transition_dur_in"])
+                except (TypeError, ValueError):
+                    pass
+            clean.append(entry)
         if not clean:
             return None
         clean.sort(key=lambda k: k["t"])
@@ -140,19 +146,23 @@ def _build_piecewise_expr(
             expr = f"if(lt(t\\,{t_next:.4f})\\,{x_i:.2f}\\,{expr})"
         return expr
 
-    # Smooth: pan over transition_dur seconds, centered on each boundary.
-    half_dur = transition_dur / 2.0
+    # Smooth: cubic ease-in-out pan over seg_dur seconds, centered on each boundary.
     expr = f"{pts[-1][1]:.2f}"
     for i in range(len(pts) - 2, -1, -1):
         t_curr, x_curr = pts[i]
         t_next, x_next = pts[i + 1]
+        seg_dur = float(keyframes[i + 1].get("transition_dur_in") or transition_dur)
+        half_dur = seg_dur / 2.0
         b_start = max(t_curr, t_next - half_dur)
         b_end = t_next + half_dur
-        # Lerp: x_curr + (x_next - x_curr) * clamp((t - b_start) / dur, 0, 1)
-        lerp = (
-            f"({x_curr:.2f}+({x_next - x_curr:.2f})"
-            f"*max(0\\,min(1\\,(t-{b_start:.4f})/{transition_dur:.4f})))"
+        # Cubic ease-in-out: u<0.5 → 4u³  u≥0.5 → 1-(−2u+2)³/2
+        u_expr = f"max(0\\,min(1\\,(t-{b_start:.4f})/{seg_dur:.4f}))"
+        ease_expr = (
+            f"if(lt({u_expr}\\,0.5)"
+            f"\\,4*pow({u_expr}\\,3)"
+            f"\\,1-pow(-2*{u_expr}+2\\,3)/2)"
         )
+        lerp = f"({x_curr:.2f}+({x_next - x_curr:.2f})*{ease_expr})"
         if b_start <= t_curr + 0.001:
             seg = lerp
         else:
@@ -268,7 +278,13 @@ def validate_keyframes(
         except (KeyError, TypeError, ValueError):
             continue
         x, y, _ = validate_user_crop(x, y, source_w, source_h, target_aspect, zoom)
-        cleaned.append({"t": t, "x_pct": x, "y_pct": y})
+        entry = {"t": t, "x_pct": x, "y_pct": y}
+        if "transition_dur_in" in kf:
+            try:
+                entry["transition_dur_in"] = max(0.05, min(2.0, float(kf["transition_dur_in"])))
+            except (TypeError, ValueError):
+                pass
+        cleaned.append(entry)
     cleaned.sort(key=lambda k: k["t"])
     if cleaned and cleaned[0]["t"] > 0.001:
         cleaned.insert(0, {**cleaned[0], "t": 0.0})

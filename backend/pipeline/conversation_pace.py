@@ -29,6 +29,13 @@ _PACE_FAST_MIN   = 6   # 6+  = "fast"
 # Minimum dwell time between keyframes, matches smart_crop.py convention
 _MIN_KEYFRAME_DWELL_SEC = 1.5
 
+# Pan duration (seconds) emitted as transition_dur_in per pace bucket
+_PACE_TO_TRANSITION_DUR = {
+    "slow":   0.30,
+    "medium": 0.20,
+    "fast":   0.12,
+}
+
 
 class ConversationPaceError(Exception):
     pass
@@ -212,6 +219,49 @@ def _face_center_pct(
     )
 
 
+def _largest_face_center_at_second(
+    abs_second: int,
+    face_tracking: list[dict],
+    source_width: int,
+    source_height: int,
+) -> tuple[float, float]:
+    """
+    Bbox centre of the largest face (by area) at abs_second across all tracks.
+    Falls back to (0.5, 0.5) if no faces are found.
+    """
+    if source_width <= 0 or source_height <= 0:
+        return 0.5, 0.5
+
+    best_area = 0
+    best_cx: Optional[float] = None
+    best_cy: Optional[float] = None
+    for frame in face_tracking:
+        ts = frame["timestamp_sec"]
+        if abs_second <= ts < abs_second + 1:
+            for face in frame["faces"]:
+                x, y, w, h = face["bbox"]
+                area = w * h
+                if area > best_area:
+                    best_area = area
+                    best_cx = x + w / 2
+                    best_cy = y + h / 2
+
+    if best_cx is None:
+        return 0.5, 0.5
+    return (
+        round(min(1.0, max(0.0, best_cx / source_width)), 4),
+        round(min(1.0, max(0.0, best_cy / source_height)), 4),
+    )
+
+
+def _has_faces_at_second(abs_second: int, face_tracking: list[dict]) -> bool:
+    return any(
+        len(fr.get("faces", [])) > 0
+        for fr in face_tracking
+        if abs_second <= fr["timestamp_sec"] < abs_second + 1
+    )
+
+
 # ---------------------------------------------------------------------------
 # Adaptive keyframe placement
 # ---------------------------------------------------------------------------
@@ -243,8 +293,10 @@ def place_adaptive_keyframes(
       min_hold_seconds:        debounce hold length passed to detect_speaker_changes()
 
     Returns:
-      list[dict]: [{"t": float, "x_pct": float, "y_pct": float}, ...]
+      list[dict]: [{"t": float, "x_pct": float, "y_pct": float, "transition_dur_in": float}, ...]
         t is clip-relative (0.0 = clip start), sorted ascending.
+        First keyframe (t=0) has no transition_dur_in.
+        All others carry transition_dur_in (seconds) derived from pace at that event second.
         Minimum 1.5 s dwell between consecutive keyframes is enforced.
     """
     # Resolve clip end
@@ -272,22 +324,38 @@ def place_adaptive_keyframes(
         )
         return [{"t": 0.0, "x_pct": 0.5, "y_pct": 0.5}]
 
-    # Initial speaker at clip start
-    first_active = next(
-        (e["active_track_id"] for e in clip_timeline if e["active_track_id"] is not None),
-        None,
-    )
-    if first_active is not None:
-        x0, y0 = _face_center_pct(
-            first_active, clip_start_int, face_tracking, source_width, source_height
+    # t=0 keyframe: active track AT clip_start_int → largest face → scan forward → center
+    start_entry = next((e for e in clip_timeline if e["second"] == clip_start_int), None)
+    start_track = start_entry["active_track_id"] if start_entry else None
+    start_track_has_data = (
+        start_track is not None
+        and any(
+            face["track_id"] == start_track
+            for frame in face_tracking
+            if clip_start_int <= frame["timestamp_sec"] < clip_start_int + 1
+            for face in frame.get("faces", [])
         )
+    )
+
+    if start_track_has_data:
+        x0, y0 = _face_center_pct(start_track, clip_start_int, face_tracking, source_width, source_height)
     else:
+        # No track data at clip start — scan forward for first second with any face.
+        # (0.5, 0.5) is the last resort only when the entire clip has no detections.
         x0, y0 = 0.5, 0.5
+        for scan_sec in range(clip_start_int, min(clip_start_int + 30, clip_end_int)):
+            if _has_faces_at_second(scan_sec, face_tracking):
+                x0, y0 = _largest_face_center_at_second(scan_sec, face_tracking, source_width, source_height)
+                break
 
     keyframes: list[dict] = [{"t": 0.0, "x_pct": x0, "y_pct": y0}]
 
     # Speaker change events within clip range
     events = detect_speaker_changes(clip_timeline, min_hold_seconds=min_hold_seconds)
+
+    # Build per-second pace lookup for transition_dur_in assignment
+    pace_timeline = compute_pace_timeline(clip_timeline, min_hold_seconds=min_hold_seconds)
+    pace_by_second: dict[int, str] = {row["second"]: row["pace"] for row in pace_timeline}
 
     for ev in events:
         t_clip = round(float(ev["second"]) - clip_start_sec, 3)
@@ -306,7 +374,26 @@ def place_adaptive_keyframes(
         x_pct, y_pct = _face_center_pct(
             ev["to_track"], ev["second"], face_tracking, source_width, source_height
         )
-        keyframes.append({"t": t_clip, "x_pct": x_pct, "y_pct": y_pct})
+        pace = pace_by_second.get(ev["second"], "slow")
+        keyframes.append({
+            "t": t_clip,
+            "x_pct": x_pct,
+            "y_pct": y_pct,
+            "transition_dur_in": _PACE_TO_TRANSITION_DUR[pace],
+        })
+
+    # Clamp transition_dur_in so pan completes >= 0.1s before full-video end.
+    # kf["t"] is clip-relative; for the production full-video path (clip_start=0)
+    # it equals the absolute video time, so this clamp correctly prevents
+    # late-video pans from overshooting. For slice paths, Fix 3 in the render
+    # script clamps relative to the slice end instead.
+    video_duration = float(len(active_speaker_timeline))
+    for kf in keyframes:
+        if "transition_dur_in" not in kf:
+            continue
+        max_dur = max(0.05, 2.0 * (video_duration - 0.1 - kf["t"]))
+        if kf["transition_dur_in"] > max_dur:
+            kf["transition_dur_in"] = round(max_dur, 3)
 
     logger.info(
         f"place_adaptive_keyframes: clip [{clip_start_sec:.1f}–{clip_end_sec:.1f}s]  "

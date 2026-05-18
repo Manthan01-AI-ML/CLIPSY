@@ -158,3 +158,22 @@ A log of significant choices made during development — what we picked, what we
 **Consequences:** For single-speaker videos with camera cuts (01_single_speaker: 346 tracks → 107 debounced events), change counts are still elevated but correct given the fragmentation level. Multi-speaker videos with actual conversational turns (02_podcast_2person) correctly alternate x_pct ~0.33 ↔ ~0.67. Pace counts inflate proportionally to cut density; "fast" pace only fires when changes exceed 6 per 10s window, which does not happen in current test set. Phase 2C (BUG-008 fix) will dramatically reduce spurious change events.
 
 Additional consequence (logged 2026-05-16, post visual review): On cut-heavy single-speaker footage, debounced change events count camera-cut-induced track_id transitions, not semantic speaker turns. This is acceptable because the downstream uses (keyframe re-centering, transition speed adaptation) treat cuts and real speaker changes identically — both warrant a new keyframe. The pace classifier's "change count" must NOT be interpreted as "speaker turn count" until BUG-008 (face track fragmentation) is fixed in Phase 2C. See BUG-011.
+
+---
+
+## [2026-05-18] Crop pan easing: cubic ease-in-out over linear lerp
+
+**Decision:** `_build_piecewise_expr` in `reframe.py` interpolates between crop positions using cubic ease-in-out (`u<0.5 → 4u³ ; u≥0.5 → 1-(−2u+2)³/2`), with per-segment pan duration read from the keyframe's optional `transition_dur_in` field.
+
+**Alternatives considered:**
+- **Linear lerp (previous implementation)** — `x_curr + (x_next - x_curr) * u`. Simple but produces mechanical, robotic motion that accelerates and decelerates abruptly at boundary frames.
+- **Sine ease-in-out** — smoother feel, mathematically equivalent for most content but not natively expressible in FFmpeg's filter expression language without trig functions. FFmpeg's `sin()` is available but produces very similar results to cubic for short pans. Rejected in favor of simpler polynomial.
+- **Ease-in only / ease-out only** — asymmetric easing would make pans feel like they snap to or away from the subject. Wrong for camera-reframe semantics where both start and end should be gentle.
+- **Fixed global `transition_dur`** — initial implementation used a single constant for all segments. Rejected: fast-paced conversation segments with 0.12s pans feel punchy and appropriate; slow segments with 0.30s pans feel deliberate. A single value would either be too slow for fast content or too fast for slow content.
+
+**Reason:** Cubic ease-in-out is the standard CSS/animation easing curve. It produces a "camera operator" feel where the pan accelerates gently out of the resting frame and decelerates into the next one. FFmpeg's filter expression language can evaluate it per-frame without any external function calls — the `u_expr` string is duplicated 3× in the ease expression (FFmpeg has no variable binding), which is fine since each evaluation is a few arithmetic ops. Per-segment `transition_dur_in` flows from `conversation_pace.py` (derived from pace classification: 0.30s slow / 0.20s medium / 0.12s fast) all the way through `normalize_user_crop`, `validate_keyframes`, and into `_build_piecewise_expr`.
+
+**Consequences:**
+- Pan duration values (0.30/0.20/0.12) were tuned through two rounds of visual review. They are the right starting point but may need per-content-type adjustment in Phase 2D.
+- Frontend `effectiveCropAtTime()` still uses linear lerp for preview rendering. The preview will not match the rendered output exactly. Logged as BUG-012; Phase 2D scope.
+- `transition_dur_in` is an optional keyframe field — absence falls back to global `transition_dur` (default 0.4s). Legacy v1 crops and manually-placed keyframes without the field continue to work correctly.

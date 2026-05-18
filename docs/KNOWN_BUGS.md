@@ -120,3 +120,14 @@
 **Severity:** Low — does NOT affect keyframe placement or transition timing (cuts DO warrant re-centering, which is the actual downstream use).
 **Status:** Expected behavior, pending BUG-008 fix in Phase 2C. After BUG-008 is fixed, the same code will report semantically correct speaker turn counts.
 **Notes:** Do NOT use "change event count" as a proxy for "number of speakers" or "conversation turn count" in any future code until BUG-008 is closed.
+
+---
+
+### BUG-012 — Frontend crop preview uses linear lerp; backend uses cubic ease-in-out
+
+**Symptom:** After Phase 2B.3, `backend/pipeline/reframe.py` produces cubic ease-in-out pans in the rendered MP4. The frontend preview (`effectiveCropAtTime()` in the reframe UI JavaScript) still interpolates between keyframes with a linear `t` ramp. The preview will look slightly different from the rendered export — the pan will appear to snap harder at boundaries in the preview than in the final output.
+
+**Affected area:** Frontend reframe preview JavaScript — `effectiveCropAtTime()` or equivalent interpolation function.
+**Severity:** Low — affects preview fidelity only; rendered output is correct. Users may notice the preview motion feels slightly more abrupt than the export.
+**Status:** Open — Phase 2D scope.
+**Notes:** Fix: replicate the cubic ease-in-out formula in JavaScript and read `transition_dur_in` from the keyframe payload when building the preview timeline. The formula is `u < 0.5 ? 4*u**3 : 1 - Math.pow(-2*u+2, 3)/2` where `u` is the normalized progress within the pan window.

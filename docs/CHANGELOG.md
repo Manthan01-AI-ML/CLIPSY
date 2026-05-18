@@ -2,6 +2,38 @@
 
 ---
 
+## 2026-05-18 — Session 6: Phase 2B.3 — Cubic Ease-In-Out + Adaptive Transitions
+
+### Changed
+- `backend/pipeline/reframe.py` — `_build_piecewise_expr`: replaced linear lerp with cubic ease-in-out (`u<0.5 → 4u³`, `u≥0.5 → 1-(−2u+2)³/2`); pan duration now reads per-segment `transition_dur_in` from keyframe dict, falls back to global `transition_dur`
+- `backend/pipeline/reframe.py` — `normalize_user_crop`: preserves optional `transition_dur_in` field when cleaning v2 keyframes
+- `backend/pipeline/reframe.py` — `validate_keyframes`: preserves and clamps `transition_dur_in` (0.05–2.0s) per keyframe
+- `backend/pipeline/conversation_pace.py` — `place_adaptive_keyframes`: each non-zero keyframe now carries `transition_dur_in` derived from pace at that second (`slow=0.30s`, `medium=0.20s`, `fast=0.12s`)
+- `backend/pipeline/conversation_pace.py` — `place_adaptive_keyframes`: t=0 keyframe now uses actual face position at `clip_start_int` (track bbox centre), falls back to largest face via forward scan up to 30s, then `(0.5, 0.5)` last resort (fixes BUG A — was hardcoded to center)
+- `backend/pipeline/conversation_pace.py` — `place_adaptive_keyframes`: end-of-clip clamp prevents `transition_dur_in` from overshooting video end
+- `backend/pipeline/conversation_pace.py` — new helpers: `_largest_face_center_at_second`, `_has_faces_at_second`
+
+### New files
+- `scripts/test_adaptive_transitions.py` — renders 2 MP4s per video (slow + medium/fast segment) using `build_keyframe_crop_filter`; finds best 10s window per pace bucket; applies slice-relative `transition_dur_in` clamp; writes filter strings and `summary.json` to `debug_output_2b3/`
+
+### Test results (5 videos, 10-second clips, 2 renders each)
+
+| Video | Slow window | t=0 position | Keyframes | Transition dist | OK |
+|---|---|---|---|---|---|
+| 01_single_speaker | [0, 10] | (0.50, 0.26) | 2 | {0.30: 1} | ✓ |
+| 02_podcast_2person | [0, 10] | (0.61, 0.38) | 2 | {0.30: 1} | ✓ |
+| 03_panel_4person | [0, 10] | (0.50, 0.30) | 1 | — | ✓ |
+| 04_screenshare | [0, 10] | (0.50, 0.50) | 1 | — | ✓ |
+| 05_lowlight | [0, 10] | (0.51, 0.34) | 1 | — | ✓ |
+
+Fast-segment renders for 01, 02, 03 confirmed correct pace-based durations (`{0.30: 2, 0.20: 1}` on 02 fast).
+
+Two visual review iterations: initial constants `0.45/0.28/0.15` → final `0.30/0.20/0.12` after user tuning. All 10 renders passed visual review.
+
+21 output files in `debug_output_2b3/` (10 MP4s + 10 filter.txt + summary.json).
+
+---
+
 ## 2026-05-16 — Session 5: Phase 2B.2 — Conversation Pace Classifier + Adaptive Keyframes
 
 ### New files

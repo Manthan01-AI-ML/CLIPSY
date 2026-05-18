@@ -431,3 +431,76 @@ Test script ran inside container against all 5 test videos. 25 annotated JPEGs p
 - `backend/pipeline/worker.py` — replaced hardcoded `5` with `num_clips` from job meta
 - `backend/main.py` — added `GET /reset-password` SPA passthrough
 - `frontend/templates/index.html` — updated `#forgot-modal`; added `#view-reset-password`; added clip-count slider
+
+---
+
+## Session 6 — Launch Sprint Day 8: Phase 2B.3 — Cubic Ease-In-Out + Adaptive Transitions
+
+**Date:** 2026-05-18
+**Goal:** Replace linear lerp with cubic ease-in-out in `reframe.py`; add per-segment `transition_dur_in` flowing from `conversation_pace.py` → `reframe.py` → FFmpeg filter; create render test script; visual review to completion.
+
+---
+
+### Pre-work decisions
+
+- **Do not touch**: `smart_crop.py`, `active_speaker.py`, `audio_activity.py`, `render.py`, `worker.py`, frontend
+- **Cubic ease formula**: `u<0.5 → 4u³ ; u≥0.5 → 1-(−2u+2)³/2` (standard CSS ease-in-out)
+- **`u_expr` appears 3× in FFmpeg** — FFmpeg re-evaluates each frame; no variable binding needed
+- **Comma escaping**: all commas inside FFmpeg `if()`, `pow()`, etc. must be `\,` (`\\,` in Python)
+
+### Files edited
+
+- `backend/pipeline/reframe.py` — cubic ease-in-out in `_build_piecewise_expr`; per-segment `seg_dur` from `keyframe[i+1].get("transition_dur_in")`; `normalize_user_crop` and `validate_keyframes` preserve `transition_dur_in`
+- `backend/pipeline/conversation_pace.py` — `place_adaptive_keyframes` emits `transition_dur_in` per pace; t=0 keyframe uses face position at `clip_start_int` with forward scan; end-of-clip clamp; new helpers `_largest_face_center_at_second`, `_has_faces_at_second`
+- `scripts/test_adaptive_transitions.py` — new; renders 10 MP4s (slow + fast per video); slice clamp applied; summary.json written
+
+### Sanity check (pre-render)
+
+- 3-keyframe filter string verified: paren balance 76/76; FFmpeg lavfi dry-test returncode 0
+- Per-segment `transition_dur_in` confirmed flowing into `b_start`/`b_end` in `_build_piecewise_expr`
+
+### Visual review — Round 1 (constants 0.45/0.28/0.15)
+
+**BUG A** — t=0 keyframe hardcoded to (0.5, 0.5):
+- Root cause: `_face_center_pct(first_active, clip_start_int=0, ...)` searched for the active track at second 0 where no faces were detected (videos 01/02/03/05 have empty face lists in intro frames)
+- Fix: check if track has data at `clip_start_int`; if not, scan forward up to 30s for first second with any face; use `_largest_face_center_at_second` there; (0.5, 0.5) only as absolute last resort
+
+**BUG B** — transitions too long / end-of-clip overshoot:
+- Fix 1: tuned constants → `{slow: 0.45, medium: 0.28, fast: 0.15}` (intermediate)
+- Fix 2: end-of-clip clamp in `place_adaptive_keyframes` — `max_dur = max(0.05, 2.0*(video_duration-0.1-kf["t"]))`
+- Fix 3: slice clamp in `test_adaptive_transitions.py` — same formula with `slice_duration`
+
+### Visual review — Round 2 (constants 0.30/0.20/0.12)
+
+User manually tuned `_PACE_TO_TRANSITION_DUR` to `{slow: 0.30, medium: 0.20, fast: 0.12}`. All 10 MP4s re-rendered. Visual review passed.
+
+### Final test results
+
+| Video | Slow render | Fast render | t=0 OK | Errors |
+|---|---|---|---|---|
+| 01_single_speaker | ✓ | ✓ | face-located | 0 |
+| 02_podcast_2person | ✓ | ✓ | face-located | 0 |
+| 03_panel_4person | ✓ | ✓ | face-located | 0 |
+| 04_screenshare | ✓ | (no fast window) | center fallback | 0 |
+| 05_lowlight | ✓ | ✓ | face-located | 0 |
+
+21 output files total (10 MP4 + 10 filter.txt + summary.json).
+
+### Open items
+
+- **BUG-008** (track fragmentation) still deferred to Phase 2C — debouncing keeps downstream correct
+- **BUG-012** logged: frontend `effectiveCropAtTime()` uses linear lerp; will be aligned in Phase 2D
+
+### Note on `worker.py` / `user_crop`
+
+`place_adaptive_keyframes` output (with `transition_dur_in`) flows into the production path via `clips.py` → `user_crop` dict stored on the clip. The `worker.py` render path calls `build_keyframe_crop_filter` which reads `transition_dur_in` through `normalize_user_crop`. No changes needed to worker — the field is already preserved end-to-end.
+
+### Files changed this session
+
+- `backend/pipeline/reframe.py` — cubic ease, `transition_dur_in` preservation
+- `backend/pipeline/conversation_pace.py` — adaptive `transition_dur_in`, BUG A fix, end-of-clip clamp
+- `scripts/test_adaptive_transitions.py` — created
+- `docs/CHANGELOG.md` — Session 6 entry prepended
+- `docs/SESSION_LOG.md` — this entry appended
+- `docs/DECISIONS.md` — cubic ease decision appended
+- `docs/KNOWN_BUGS.md` — BUG-012 added
