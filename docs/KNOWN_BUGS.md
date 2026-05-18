@@ -4,14 +4,25 @@
 
 ## Open
 
-### BUG-008 — High track fragmentation in `track_faces_across_frames()` on cut-heavy content
+### BUG-008 — High track fragmentation in `track_faces_across_frames()` on cut-heavy content ✓ RESOLVED
 
 **Symptom:** `01_single_speaker.mp4` (TEDx talk): 963 frames sampled at 2fps → 346 unique tracks. Expected ≤5 for a single-speaker video. `03_panel_4person.mp4`: 1401 frames → 724 tracks. Track IDs fragment on every camera cut or pan because IoU drops to 0 when the face jumps to a new screen position.
 
 **Affected area:** `backend/pipeline/active_speaker.py` — `track_faces_across_frames()` IoU matching
 **Severity:** Medium — active speaker timeline still works (falls back to `only_face`/`largest_face`/`lip_movement_dominant` correctly), but long-term track identity for "who spoke in total for how many seconds" is broken. Each cut creates a new track_id.
-**Status:** Open (Phase 2C scope)
-**Notes:** Potential fixes: (1) increase `IOU_MATCH_THRESHOLD` tolerance for small movements; (2) use face embedding distance (not practical without adding a dep); (3) assign track IDs by bounding-box spatial region instead of IoU frame-to-frame. Low impact on Phase 2B.1 goal (per-second timeline), but Phase 2C needs better track continuity for clip-level speaker labelling.
+**Status:** RESOLVED in Phase 2C (Session 7, 2026-05-18). Spatial-region fallback added to `active_speaker.track_faces_across_frames`. IoU matching primary; 4×4 grid + 3s region memory fallback for camera cuts.
+**Fix:** Added `_spatial_region_id()` helper (maps bbox center to `(col, row)` in 4×4 grid), `region_track_history: dict[tuple[int,int], tuple[int,float]]` in the tracking loop. When IoU < 0.5, looks up the face's grid cell in `region_track_history` — if the region was occupied within 3.0s, reuses the prior track_id instead of allocating a new one.
+
+---
+
+### BUG-013 — Docker image missing `webrtcvad`
+
+**Symptom:** Worker container's Python env doesn't have `webrtcvad` installed, even though `requirements.txt` lists it as `webrtcvad==2.0.10`. Phase 2C E2E test required `pip install webrtcvad==2.0.10` in-place for the running container. Without it, `analyze_audio_activity` raises `ImportError` and the Phase 2C adaptive keyframe block catches it, logs a warning, and falls back to static smart_crop — adaptive keyframes silently disabled.
+
+**Affected area:** `backend/pipeline/audio_activity.py` — `import webrtcvad` at call time
+**Severity:** Medium — graceful degradation works, but adaptive keyframes are disabled until fix. No user-visible error; only log evidence.
+**Status:** Open — fixes automatically on next `docker compose build`. Dockerfile already has `build-essential` for the C extension.
+**Action:** Add to Day 10 deploy checklist: `docker compose build worker` before pushing to Hetzner.
 
 ---
 

@@ -504,3 +504,71 @@ User manually tuned `_PACE_TO_TRANSITION_DUR` to `{slow: 0.30, medium: 0.20, fas
 - `docs/SESSION_LOG.md` — this entry appended
 - `docs/DECISIONS.md` — cubic ease decision appended
 - `docs/KNOWN_BUGS.md` — BUG-012 added
+
+---
+
+## Session 7 — Launch Sprint Day 8: Phase 2C — Worker Auto-Render + BUG-008 Fix
+
+**Date:** 2026-05-18
+**Goal:** Wire `worker.py` so every clip auto-gets adaptive keyframes from the Phase 2B pipeline. Fix BUG-008 (face track fragmentation on camera cuts).
+
+---
+
+### Pre-work decisions
+
+- `/auto-keyframes` endpoint path confirmed correct since Phase 2B.2 — no change needed
+- `render_one_clip` already accepts `user_crop` kwarg — only `render_all_clips` was missing the pass-through
+- `worker.py` had no keyframe generation between `pick_clips` and `render` — confirmed by inspection
+- **DO-NOT-TOUCH:** `smart_crop.py` Haar code (serves `/detect-speakers` + smart_crop fallback), `auto_keyframes_from_detection` (dead code, Phase 2D cleanup), `rerender_clip_with_edits` signature (Phase 2D)
+- 4 edit points identified: `active_speaker.py` (BUG-008), `render.py` (pass-through), `worker.py` ×2 (gen step + persist)
+
+### Files edited
+
+- `backend/pipeline/active_speaker.py` — BUG-008 fix: added `SPATIAL_GRID_W/H=4`, `SPATIAL_REGION_TIMEOUT_SEC=3.0`, `_spatial_region_id()` helper, `region_track_history` dict in tracking loop. IoU match runs first; spatial fallback runs only when IoU < 0.5 (likely cut). Updated final log line.
+- `backend/pipeline/render.py` — `render_all_clips`: added `clip_user_crop = clip.get("user_crop")` and passed it to `render_one_clip`
+- `backend/pipeline/worker.py` — Phase 2C keyframe-generation block (imports 4 functions, one full-video analysis, per-clip `place_adaptive_keyframes`, try/except fallback)
+- `backend/pipeline/worker.py` — `clip_meta` dict: added `"user_crop": c.get("user_crop")`
+
+### BUG-008 fix — spatial-region tracker detail
+
+`_spatial_region_id(bbox, frame_w, frame_h) → (col, row)` maps bbox center to 4×4 grid cell. Inside `track_faces_across_frames`, `region_track_history: dict[tuple[int,int], tuple[int,float]]` maps `(col,row)` → `(track_id, last_seen_ts)`. On each face detection:
+1. IoU match against previous frame → use that track_id
+2. IoU < 0.5 → look up `region_track_history[region]`
+   - Within 3.0s → reuse prior track_id (same speaker, different cut)
+   - Expired or no entry → new track_id
+3. Always update `region_track_history[region] = (track_id, ts)`
+
+### Sanity checks
+
+- `_spatial_region_id((100,100,200,200), 1920,1080)` → `(0, 0)` ✓
+- `from backend.pipeline.worker import process_video; print('OK')` → `OK` ✓
+- `'user_crop' in inspect.getsource(render_all_clips)` → `True` ✓
+
+### E2E test
+
+Source: `f2f91138-fc15-4d38-8cb6-71dfe4008927` (YouTube, 10.3 MB). Re-ran full `process_video` task in-container. Webrtcvad installed in-place (BUG-013).
+
+Pipeline log confirmed:
+- `generating adaptive keyframes for 5 clips...`
+- `MediaPipe FaceDetector loaded: short-range` + `full-range`
+- Per-clip: `N adaptive keyframes placed`
+
+DB query: 5 clips, all have `user_crop` in `meta`, version=2, keyframes arrays populated. All t=0 positions face-located (no (0.5,0.5) center fallbacks). `transition_dur_in=0.30` on all transitions (slow pace = correct for single-speaker content).
+
+`clip_01.mp4`: h264, 1080×1920, 58.0s, 17.8 MB. Visual review passed — adaptive pan visible at t=55s.
+
+### Open items
+
+- **BUG-002** (export quality) — Day 9 scope
+- **BUG-012** (frontend reframe preview linear lerp) — Phase 2D
+- **BUG-013** (webrtcvad missing from Docker image) — add to Day 10 deploy checklist: `docker compose build worker`
+
+### Files changed this session
+
+- `backend/pipeline/active_speaker.py` — BUG-008 spatial-region tracker
+- `backend/pipeline/render.py` — user_crop pass-through in render_all_clips
+- `backend/pipeline/worker.py` — Phase 2C keyframe gen step + clip.meta persist
+- `docs/CHANGELOG.md` — Session 7 entry prepended
+- `docs/SESSION_LOG.md` — this entry appended
+- `docs/DECISIONS.md` — two decisions appended (worker auto-render, BUG-008 fix)
+- `docs/KNOWN_BUGS.md` — BUG-008 marked resolved, BUG-013 added

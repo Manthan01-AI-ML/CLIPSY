@@ -177,3 +177,39 @@ Additional consequence (logged 2026-05-16, post visual review): On cut-heavy sin
 - Pan duration values (0.30/0.20/0.12) were tuned through two rounds of visual review. They are the right starting point but may need per-content-type adjustment in Phase 2D.
 - Frontend `effectiveCropAtTime()` still uses linear lerp for preview rendering. The preview will not match the rendered output exactly. Logged as BUG-012; Phase 2D scope.
 - `transition_dur_in` is an optional keyframe field — absence falls back to global `transition_dur` (default 0.4s). Legacy v1 crops and manually-placed keyframes without the field continue to work correctly.
+
+---
+
+## [2026-05-18] Worker auto-render generates adaptive keyframes by default
+
+**Decision:** `worker.py` runs the Phase 2B active-speaker pipeline ONCE per source video (between `pick_clips` and render), generates per-clip keyframes via `place_adaptive_keyframes`, and attaches a `user_crop` v2 dict to each clip dict. `render_all_clips` passes `user_crop` through to `render_one_clip`. The `user_crop` is also persisted to `clip.meta` so the Reframe modal can read auto-generated keyframes when the user opens it.
+
+**Alternatives considered:**
+- **Per-clip pipeline analysis** — run `track_faces_across_frames` once per clip. Rejected: 5× redundant audio extraction + face tracking work; also loses cross-boundary smoothness (face tracking state is lost between clips).
+- **Lazy/on-demand keyframe generation at render time** — generate inside `render_one_clip`. Rejected: clips render in parallel (threadpool); would 5× duplicate analysis and introduce race conditions on shared tracking state.
+- **Manual-only via `/auto-keyframes` endpoint** — skip worker integration entirely. Rejected: defeats the purpose of building the pipeline. Auto-keyframes should be the default, with manual override as an enhancement.
+
+**Reason:** Full-video analysis once is faster wall-clock than per-clip, and face tracking state accumulates correctly across the full timeline. Attaching `user_crop` to the clip dict is the natural integration point — all downstream functions already accept it. The try/except wrapper means adaptive keyframes are an enhancement, not a hard requirement; any pipeline failure is logged and clips fall back to static smart_crop.
+
+**Consequences:** `process_video` task now does meaningful CPU work before render (~30–60s for full-video face tracking at adaptive `sample_fps`). For a 1-hour podcast at 1fps, this is ~3600 frames of inference. This is acceptable given the quality improvement; Phase 2D may add caching to avoid re-analysis on re-render.
+
+---
+
+## [2026-05-18] BUG-008 fix: spatial-region grid as IoU fallback for cut-robust tracking
+
+**Decision:** `track_faces_across_frames` retains IoU matching as primary (handles smooth motion), and adds a 4×4 spatial-grid region memory as fallback when IoU < 0.5. The region memory (`region_track_history`) maps each grid cell to `(track_id, last_seen_timestamp)` with a 3.0s timeout. A face that appears in a region where a track was seen within 3s keeps that track ID even if IoU = 0.
+
+**Alternatives considered:**
+- **Pure IoU only** — the pre-fix state. Fails on every camera cut (IoU = 0 between frames). Produced 346 tracks for a single-speaker video.
+- **Face embedding similarity (FaceNet / ArcFace)** — ground truth identity matching. Rejected: adds a ~50 MB model, GPU strongly desirable, adds significant inference time per face. Overkill for our use case.
+- **Optical flow (Lucas-Kanade)** — track keypoints across frames. Rejected: fails on hard cuts (no optical flow at the cut boundary), slow on CPU for per-frame tracking.
+- **3×3 grid** — too coarse. Two speakers in a side-by-side podcast layout often land in the same cell.
+- **5×5 grid** — too fine. Normal head movements (±50px in 1080p) can shift a face between adjacent cells, creating false new track IDs.
+- **4×4 grid** — chosen. Aligns with typical 2-person side-by-side and 4-person panel layouts; head movements within a cell don't trigger false splits.
+- **Timeout 1s** — too short. Cut-and-return patterns (presenter + slides + presenter) often show 2–3s of non-face content between appearances.
+- **Timeout 5s** — too long. A different speaker could occupy the same region for 5s and inherit the wrong track ID.
+- **Timeout 3.0s** — chosen based on empirical review of BUG-008 test fixtures (01_single_speaker cuts average ~1.5s, so 3s covers a cut + brief cutaway without spanning long scene changes).
+
+**Reason:** Spatial region is a cheap, dependency-free proxy for face identity that covers the dominant failure mode (hard cuts). IoU handles the 90% case (smooth motion); spatial handles the 10% case (cuts). No new dependencies.
+
+**Consequences:** Track ID count drops significantly on cut-heavy content. False positives possible if two different speakers occupy the same screen region within 3s (e.g. presenter walks past a fixed camera and someone else steps in) — tolerable, since adaptive transitions smooth any resulting pan. BUG-011 (change event counts) will improve naturally as track fragmentation decreases.

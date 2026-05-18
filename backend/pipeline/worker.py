@@ -166,6 +166,79 @@ def process_video(self, job_id_str: str) -> dict:
             "render_done": 0,
         })
 
+        # =====================================================================
+        # Phase 2C: adaptive keyframes per clip
+        #
+        # Run the active-speaker pipeline ONCE for the whole source video
+        # (face tracking + audio VAD is expensive — full-video analysis is
+        # faster than per-clip and produces smoother results across boundaries).
+        # Then place_adaptive_keyframes slices per-clip via clip_start/end_sec.
+        #
+        # If any step fails, log a warning and continue — clips will fall back
+        # to static smart_crop face-centering. Auto-keyframes are an enhancement,
+        # not a hard requirement.
+        # =====================================================================
+        logger.info(f"[{job_id}] generating adaptive keyframes for {len(clips)} clips...")
+        try:
+            from backend.pipeline.audio_activity import analyze_audio_activity
+            from backend.pipeline.active_speaker import (
+                track_faces_across_frames,
+                compute_active_speaker_timeline,
+            )
+            from backend.pipeline.conversation_pace import place_adaptive_keyframes
+            from backend.pipeline.smart_crop import get_video_dimensions
+
+            sw, sh = get_video_dimensions(video_path)
+            if sw == 0 or sh == 0:
+                raise RuntimeError(f"Could not probe source dimensions: {video_path}")
+
+            # ONE expensive analysis for the entire video
+            audio_activity   = analyze_audio_activity(video_path, job_id=str(job_id))
+            face_tracking    = track_faces_across_frames(video_path)
+            speaker_timeline = compute_active_speaker_timeline(face_tracking, audio_activity)
+
+            for c in clips:
+                clip_start = float(c["start"])
+                clip_end   = clip_start + float(c["duration"])
+                try:
+                    keyframes = place_adaptive_keyframes(
+                        speaker_timeline,
+                        face_tracking,
+                        clip_start_sec=clip_start,
+                        clip_end_sec=clip_end,
+                        source_width=sw,
+                        source_height=sh,
+                    )
+                    if keyframes and len(keyframes) > 0:
+                        c["user_crop"] = {
+                            "version": 2,
+                            "keyframes": keyframes,
+                            "zoom": 1.0,
+                            "transition": "smooth",
+                            "transition_dur": 0.4,  # per-keyframe dur_in overrides this
+                        }
+                        logger.info(
+                            f"[{job_id}] clip #{c.get('rank')}: "
+                            f"{len(keyframes)} adaptive keyframes placed"
+                        )
+                    else:
+                        logger.info(
+                            f"[{job_id}] clip #{c.get('rank')}: "
+                            f"no keyframes generated, will use static smart_crop"
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"[{job_id}] clip #{c.get('rank')}: "
+                        f"keyframe generation failed ({e}), using static smart_crop"
+                    )
+
+        except Exception as e:
+            logger.warning(
+                f"[{job_id}] adaptive keyframe pipeline failed ({e}), "
+                f"all clips will use static smart_crop"
+            )
+        # === end Phase 2C insert ===
+
         # Session C: Generate pre-hook + outro for each clip BEFORE render
         if add_hook_outro:
             logger.info(f"[{job_id}] generating hooks + outros for {len(clips)} clips...")
@@ -359,6 +432,7 @@ def process_video(self, job_id_str: str) -> dict:
                     "caption_emphasis": c.get("emphasis_data") or None,
                     # NEW Session WM: watermark status (frontend uses this to show badge)
                     "watermarked": bool(c.get("watermarked", False)),
+                    "user_crop": c.get("user_crop"),  # Phase 2C: adaptive keyframes from active-speaker pipeline
                 }
 
                 # Step 13: Store original transcript segments that fall within this clip

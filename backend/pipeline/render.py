@@ -1184,12 +1184,14 @@ def render_all_clips(
                 user_clips_lifetime=user_lifetime_clips + (idx - 1),
                 clip_index_in_job=(idx - 1),
             )
+            clip_user_crop = clip.get("user_crop")
             clip_path, thumb_path = render_one_clip(
                 source_video, clip, transcript_segments, output_dir, job_id,
                 aspect_ratio=aspect_ratio,
                 crop_position=crop_position,
                 caption_preset=caption_preset,
                 detected_language=detected_language,
+                user_crop=clip_user_crop,
                 intro_outro=intro_outro,
                 remove_silences=remove_silences,
                 emphasis_data=emphasis_data,

@@ -30,6 +30,10 @@ IOU_MATCH_THRESHOLD  = 0.5    # min IoU to link a detection to an existing track
 LIP_VARIANCE_NORMALIZER = 200.0   # px² — std dev ≈ 14px = clearly talking (calibrated 720p–1080p)
 LIP_DOMINANCE_RATIO  = 1.5    # dominant speaker must score >= 1.5× next speaker's lip score
 
+SPATIAL_GRID_W = 4              # BUG-008: divide frame into 4×4 grid for cut-robust tracking
+SPATIAL_GRID_H = 4
+SPATIAL_REGION_TIMEOUT_SEC = 3.0  # region "remembers" track_id for this long after last seen
+
 
 class ActiveSpeakerError(Exception):
     pass
@@ -164,7 +168,21 @@ def _extract_frame(
 
 
 # ---------------------------------------------------------------------------
-# Face tracking across frames (IoU-based)
+# Spatial-region helper (BUG-008: cut-robust track continuity)
+# ---------------------------------------------------------------------------
+
+def _spatial_region_id(bbox: tuple, frame_w: int, frame_h: int) -> tuple[int, int]:
+    """Map a bbox center to a (col, row) grid cell index."""
+    x, y, w, h = bbox
+    cx = x + w / 2
+    cy = y + h / 2
+    col = min(SPATIAL_GRID_W - 1, max(0, int(cx / frame_w * SPATIAL_GRID_W)))
+    row = min(SPATIAL_GRID_H - 1, max(0, int(cy / frame_h * SPATIAL_GRID_H)))
+    return (col, row)
+
+
+# ---------------------------------------------------------------------------
+# Face tracking across frames (IoU + spatial-region)
 # ---------------------------------------------------------------------------
 
 def track_faces_across_frames(
@@ -223,6 +241,7 @@ def track_faces_across_frames(
     prev_faces: list[dict] = []    # faces from the previous frame, with track_ids
     next_track_id = 0
     results: list[dict] = []
+    region_track_history: dict[tuple[int, int], tuple[int, float]] = {}
 
     for frame_idx, ts in enumerate(timestamps):
         frame = _extract_frame(video_path, ts, W, H)
@@ -233,12 +252,15 @@ def track_faces_across_frames(
 
         raw_faces, _ = detect_faces_with_retry(frame)
 
-        # IoU-based track assignment
+        # IoU + spatial-region track assignment (BUG-008 fix)
         assigned: list[dict] = []
         used_prev: set[int] = set()
 
         for raw in raw_faces:
-            best_iou   = 0.0
+            region = _spatial_region_id(raw["bbox"], W, H)
+
+            # Step 1: try IoU match against previous frame (handles smooth motion)
+            best_iou = 0.0
             best_prev_idx = -1
             for pi, prev in enumerate(prev_faces):
                 if pi in used_prev:
@@ -252,8 +274,21 @@ def track_faces_across_frames(
                 track_id = prev_faces[best_prev_idx]["track_id"]
                 used_prev.add(best_prev_idx)
             else:
-                track_id = next_track_id
-                next_track_id += 1
+                # Step 2: IoU failed (likely camera cut). Try spatial-region match.
+                region_match = region_track_history.get(region)
+                if region_match is not None:
+                    prior_tid, prior_ts = region_match
+                    if (ts - prior_ts) <= SPATIAL_REGION_TIMEOUT_SEC:
+                        track_id = prior_tid
+                    else:
+                        track_id = next_track_id
+                        next_track_id += 1
+                else:
+                    track_id = next_track_id
+                    next_track_id += 1
+
+            # Update region memory regardless of how track_id was chosen
+            region_track_history[region] = (track_id, ts)
 
             assigned.append({
                 "track_id":   track_id,
@@ -277,8 +312,8 @@ def track_faces_across_frames(
             )
 
     logger.info(
-        f"track_faces_across_frames complete: {len(results)} frames sampled  "
-        f"tracks used: {next_track_id}"
+        f"track_faces_across_frames complete: {len(results)} frames sampled, "
+        f"tracks used: {next_track_id}, regions occupied: {len(region_track_history)}"
     )
     return results
 

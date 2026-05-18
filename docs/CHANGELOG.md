@@ -2,6 +2,30 @@
 
 ---
 
+## 2026-05-18 — Session 7: Phase 2C — Worker Auto-Render + BUG-008 Fix
+
+### Changed
+- `backend/pipeline/worker.py` — NEW Phase 2C keyframe-generation step between `pick_clips` and render: runs the full active-speaker pipeline (`analyze_audio_activity → track_faces_across_frames → compute_active_speaker_timeline`) ONCE per source video, then calls `place_adaptive_keyframes` per clip with `clip_start/end_sec` and attaches `user_crop` dict to each clip. Wrapped in try/except — failure falls back gracefully to static smart_crop
+- `backend/pipeline/worker.py` — `clip_meta` now persists `user_crop` so the Reframe modal can read auto-generated keyframes on open
+- `backend/pipeline/render.py` — `render_all_clips` now reads `clip.get("user_crop")` per clip and passes it to `render_one_clip` (which already accepted the kwarg)
+- `backend/pipeline/active_speaker.py` — **BUG-008 fix**: `track_faces_across_frames` dual matching — IoU first (smooth motion), 4×4 spatial-grid + 3s region memory fallback (camera cuts). New constants: `SPATIAL_GRID_W=4`, `SPATIAL_GRID_H=4`, `SPATIAL_REGION_TIMEOUT_SEC=3.0`. New helper: `_spatial_region_id()`. Face track IDs now survive cuts when a speaker stays in the same screen region.
+
+### E2E test results (job `f2f91138`, YouTube source, re-run through full pipeline)
+
+| Rank | Start | Dur | KFs | t=0 face position | Transitions |
+|---|---|---|---|---|---|
+| 1 | 254.0s | 58s | 2 | (0.465, 0.275) face-located | 1 × 0.30s |
+| 2 | 29.0s | 53s | 2 | (0.622, 0.312) face-located | 1 × 0.30s |
+| 3 | 110.0s | 50s | 1 | (0.490, 0.292) face-located | static hold |
+| 4 | 312.0s | 44s | 2 | (0.632, 0.268) face-located | 1 × 0.30s |
+| 5 | 347.0s | 51s | 2 | (0.451, 0.297) face-located | 1 × 0.30s |
+
+5/5 clips rendered. Every clip has `user_crop` in `clip.meta`. All t=0 face-located. Visual review on `clip_01.mp4` (h264 1080×1920, 58s, 17.8 MB) passed.
+
+**Known:** `webrtcvad` is in `requirements.txt` but missing from current container image — `pip install` worked in-place. Permanent fix on next `docker compose build`. Logged as BUG-013.
+
+---
+
 ## 2026-05-18 — Session 6: Phase 2B.3 — Cubic Ease-In-Out + Adaptive Transitions
 
 ### Changed
