@@ -2,6 +2,37 @@
 
 ---
 
+## 2026-05-19 — Session 8: Phase 2D.1 — Forgot-password email flow end-to-end
+
+### Fixed
+- `backend/core/config.py` — `EMAIL_FROM` default corrected from stale `hello@clipsy.pro` to `noreply@send.clipsy.in`. Added `EMAIL_FROM_NAME: str = "Clipsy"` field.
+- `backend/services/notifications.py` — `send_password_reset_email` now sends from `"Clipsy <noreply@send.clipsy.in>"` (display-name format) instead of bare address, improving Resend deliverability and inbox presentation.
+- `backend/api/routes/auth.py` — register, login, and forgot-password endpoints now normalize email via `payload.email.strip().lower()` before all DB lookups. Case-insensitive auth everywhere. Added `logger.info` on forgot-password user-matched and no-match paths for trivial debugging.
+- **Data migration** — `UPDATE users SET email = LOWER(email)` backfilled 1 mixed-case row (`CHOUDHARY.MANTHAN01@gmail.com → choudhary.manthan01@gmail.com`). Must be run before deploy to prod if other mixed-case rows exist.
+- `frontend/templates/index.html` — moved `URLSearchParams` token-capture IIFE to the **first** `<script>` tag in `<body>`. Previously the capture ran after `main init()`, so `window.__cwResetToken` was undefined when `init` checked it → reset-password view never loaded.
+- `frontend/templates/index.html` — wrapped `init()` in `DOMContentLoaded`. The `#view-reset-password` div sits at line 8657, parsed after the main `<script>` block that contains `init()` (line ~7001). Without the deferred listener, `showView()` tried to `classList.add('active')` on a null reference — stripping `active` from all views and producing a blank page.
+- `frontend/templates/index.html` — reset-password success screen: replaced auto-redirect 2s timeout with an explicit **"Sign in"** button. User controls the transition.
+- `frontend/templates/index.html` — forgot-password success message (`#forgot-step-2`): now shows `"If [email] is registered with Clipsy, a reset link is on its way."` with spam-folder reminder and signup-email hint. Stays enumeration-safe while being actually helpful.
+
+### Added
+- `.env.example` — reference file listing all required env vars with placeholder values (RESEND_API_KEY, EMAIL_FROM, EMAIL_FROM_NAME, FRONTEND_URL, etc.).
+
+### Known issues added
+- BUG-015 — CSP blocks Google Fonts on reset-password page (cosmetic, fallback fonts load). Phase 2D.2 scope.
+- BUG-016 — Reset-password inputs not wrapped in `<form>` (password manager autofill imperfect). Phase 2D.2 scope.
+
+### E2E verification (real Resend round-trip, 2026-05-19)
+
+```
+10:36:25 — POST /auth/forgot-password → 200, Resend API confirmed 200
+10:36:57 — GET  /reset-password?token=[REDACTED] → 200 (reset form loaded)
+10:37:44 — POST /auth/reset-password → 200 (password set)
+10:38:07 — POST /auth/login → 200 (login with new password works)
+10:38:07 — GET  /users/me → 200 (dashboard reached)
+```
+
+---
+
 ## 2026-05-18 — Session 7: Phase 2C — Worker Auto-Render + BUG-008 Fix
 
 ### Changed

@@ -213,3 +213,34 @@ Additional consequence (logged 2026-05-16, post visual review): On cut-heavy sin
 **Reason:** Spatial region is a cheap, dependency-free proxy for face identity that covers the dominant failure mode (hard cuts). IoU handles the 90% case (smooth motion); spatial handles the 10% case (cuts). No new dependencies.
 
 **Consequences:** Track ID count drops significantly on cut-heavy content. False positives possible if two different speakers occupy the same screen region within 3s (e.g. presenter walks past a fixed camera and someone else steps in) — tolerable, since adaptive transitions smooth any resulting pan. BUG-011 (change event counts) will improve naturally as track fragmentation decreases.
+
+---
+
+## [2026-05-19] Email lookup: server-side lowercase normalize over CITEXT / client-side block
+
+**Decision:** All three auth endpoints (`register`, `login`, `forgot-password`) normalize the submitted email via `payload.email.strip().lower()` before any DB query. Existing rows backfilled via `UPDATE users SET email = LOWER(email)`.
+
+**Alternatives considered:**
+- **Block uppercase typing client-side** — user's initial request. Rejected: breaks password managers (which autofill as saved, including mixed case), paste from email clients, mobile keyboard autocomplete. Users with pre-existing mixed-case saved credentials silently lose access.
+- **Case-insensitive SQL** (`func.lower(User.email) == normalized`) — equivalent to the chosen approach but skips the `users.email` B-tree index on every lookup. Rejected at scale; single-equality comparison on a pre-lowercased column stays indexed.
+- **PostgreSQL `CITEXT` extension** — transparent case-insensitive column type. Rejected: adds an extension dependency and a schema migration. Not worth the complexity for a simple normalization that handles all the same cases.
+- **Unique constraint on lowercased column** — add a shadow `email_lower` column. Rejected: two columns to keep in sync, no meaningful benefit over just normalizing at write time.
+
+**Reason:** Lowercase normalization before storage is the universal standard (Google, Slack, GitHub, Stripe). All emails are stored lowercase; all queries are lowercase; no case mismatch is possible. Defense-in-depth: client also lowercases before submitting, but server-side normalization is the authoritative path. One-time data migration handles legacy rows.
+
+**Consequences:** Users cannot register two accounts differing only in letter case (e.g., `Alice@example.com` vs `alice@example.com`). Acceptable — RFC 5321 permits it but no real provider uses it. If a user somehow has a truly case-sensitive email provider (essentially nonexistent in practice), they cannot use Clipsy.
+
+---
+
+## [2026-05-19] Forgot-password response: enumeration-safe generic message
+
+**Decision:** `POST /auth/forgot-password` always returns HTTP 200 with `{"message": "If that email is registered, a reset link is on its way."}`, regardless of whether the email exists in the DB. Backend logs the outcome (matched / no-match) but never surfaces it to the client.
+
+**Alternatives considered:**
+- **"This email isn't in our system"** on no-match — user's initial request. Rejected: email enumeration is one of the most common account reconnaissance steps. An attacker submitting a list of emails can build a confirmed-user list by reading the response. This is the threat OWASP lists under A07 (Identification and Authentication Failures) and A02 (Cryptographic Failures via information disclosure).
+- **Different HTTP status codes** (404 vs 200) — same enumeration problem, just at the status layer.
+- **Captcha after N attempts** — rate limiting already covers this (3/hour per IP). Captcha would add friction without eliminating enumeration since an attacker can still test 3 emails/hour per IP.
+
+**Reason:** Email enumeration prevention is standard practice across all reputable services (Google, GitHub, Apple, Stripe). The same 200 + generic message regardless of outcome is the OWASP-recommended pattern. The 3/hour rate limit prevents rapid scraping.
+
+**Consequences:** A legitimate user who mistypes their email gets no signal it's wrong. Mitigated by the `#forgot-step-2` success message hint: *"Make sure you used the same email you signed up with, and check your spam folder."* The rate limit (3/hour) also means a user who fat-fingers their email can quickly retry without being blocked.

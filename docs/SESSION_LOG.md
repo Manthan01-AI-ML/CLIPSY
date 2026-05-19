@@ -572,3 +572,102 @@ DB query: 5 clips, all have `user_crop` in `meta`, version=2, keyframes arrays p
 - `docs/SESSION_LOG.md` — this entry appended
 - `docs/DECISIONS.md` — two decisions appended (worker auto-render, BUG-008 fix)
 - `docs/KNOWN_BUGS.md` — BUG-008 marked resolved, BUG-013 added
+
+---
+
+## Session 8 — Launch Sprint Day 9: Phase 2D.1 — Forgot-password email flow end-to-end
+
+**Date:** 2026-05-19
+**Goal:** Wire the full forgot-password → reset-password flow end-to-end with real Resend email delivery, fix three confirmed bugs (script order, case-sensitive email lookup, blank reset page), and improve reset UX.
+
+---
+
+### Pre-work findings
+
+Read `auth.py`, `notifications.py`, `config.py`, `index.html`, `main.py` in full. Chain was wired but never tested end-to-end. Four broken interactions identified:
+
+1. `EMAIL_FROM` default pointed to stale `hello@clipsy.pro` domain (wrong subdomain); Resend sender domain is `send.clipsy.in`.
+2. User DB had `CHOUDHARY.MANTHAN01@gmail.com` (mixed-case from early test). Login/forgot-password did a case-sensitive `==` query → user not found. Silently returned "no match" on forgot-password.
+3. `index.html` bottom `<script>` set `window.__cwResetToken` from `URLSearchParams` — but `init()` in the main `<script>` block (parsed earlier) already ran and checked `window.__cwResetToken` before it was set. Reset-password view never triggered.
+4. Even if (3) were fixed: `init()` ran at line ~7001 while `#view-reset-password` div is at line 8657. `showView('reset-password')` called `document.getElementById('view-reset-password').classList.add('active')` on `null` → stripped `active` from all views → blank page.
+
+---
+
+### Locked design decisions
+
+**(a) Enumeration-safe forgot-password kept.** User requested "this email isn't as per signup" on no-match. Rejected — would allow scraping user accounts by submitting emails and reading the response. Standard practice (Google, GitHub, Apple) is to always return the same response. Instead, added helpful text hint in `#forgot-step-2` about using signup email + checking spam.
+
+**(b) Email normalization server-side, not client-side blocking.** `.strip().lower()` on `payload.email` in all three endpoints. Defense-in-depth: client also lowercases before submitting, but does NOT block uppercase typing (would break password managers, paste, mobile autocomplete; users with mixed-case saved credentials lose access).
+
+**(c) Reset success: explicit "Sign in" button, not auto-redirect.** 2-second auto-redirect removed. User controls the next step; avoids disorienting redirect if the user reads the success message.
+
+---
+
+### Files edited
+
+- `backend/core/config.py` — `EMAIL_FROM` default: `hello@clipsy.pro` → `noreply@send.clipsy.in`. Added `EMAIL_FROM_NAME: str = "Clipsy"`.
+- `backend/services/notifications.py` — `from_field = f"{settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM}>"`. Resend now shows display name in inbox.
+- `backend/api/routes/auth.py` — `register`, `login`, `forgot_password` all normalize email with `.strip().lower()` before `User` query. Added `import logging` + `logger`. Two `logger.info` calls in `forgot_password` (matched / no-match paths).
+- `frontend/templates/index.html`:
+  - **EDIT 1a**: Added early IIFE immediately after `<body>` tag (line 3314) that captures `?token=` from URLSearchParams and sets `window.__cwResetToken`. Fires before any other JS.
+  - **EDIT 1b**: Removed duplicate token-capture from bottom reset-password `<script>`.
+  - **EDIT 2**: Client-side `.trim().toLowerCase()` on email field in forgot, login, and register form submit handlers.
+  - **EDIT 3 (DOMContentLoaded)**: Changed `(async function init() {...})()` IIFE to `document.addEventListener('DOMContentLoaded', async function init() {...})`. Ensures `#view-reset-password` (line 8657) is in the DOM before `showView()` tries to find it.
+  - **EDIT 4**: `#reset-pw-success` div: replaced `font-size:36px ✓` + vague text with themed coral checkmark circle + serif heading + proper copy + `"Sign in"` button (`#reset-pw-go-signin`). `setTimeout` auto-redirect removed; button click calls `showView('auth')`.
+  - **EDIT 5**: `#forgot-step-2`: themed SVG envelope icon, `"Link sent."` heading, enumeration-safe body showing submitted email, spam-folder hint.
+- `.env.example` — created with all required env vars and placeholder values.
+
+---
+
+### Data migration
+
+```sql
+UPDATE users SET email = LOWER(email) WHERE email != LOWER(email);
+-- Result: UPDATE 1 (CHOUDHARY.MANTHAN01@gmail.com → choudhary.manthan01@gmail.com)
+-- Post-verify: SELECT count(*) FROM users WHERE email != LOWER(email); → 0
+```
+
+Must be re-run before production deploy if additional mixed-case rows accumulate.
+
+---
+
+### Debug duration
+
+~90 minutes total: script-order diagnosis (~20 min), case-insensitive email discovery (~15 min), DOMContentLoaded timing root cause (~30 min), UX + success-screen redesign (~25 min).
+
+---
+
+### E2E test (real Resend round-trip)
+
+```
+10:36:25 — POST /auth/forgot-password (UPPERCASE input) → 200, Resend API 200
+10:36:57 — GET  /reset-password?token=[REDACTED] → 200 (reset form loaded correctly)
+10:37:44 — POST /auth/reset-password → 200 ("Password updated successfully")
+10:38:07 — POST /auth/login (UPPERCASE email) → 200 (JWT tokens issued)
+10:38:07 — GET  /users/me → 200 (dashboard reached)
+```
+
+User confirmed clicking link from real email inbox. Full chain green.
+
+---
+
+### Open items
+
+- **BUG-015** — CSP blocks Google Fonts on reset-password page (cosmetic). Phase 2D.2.
+- **BUG-016** — Reset inputs not wrapped in `<form>` (password manager autofill imperfect). Phase 2D.2.
+- **BUG-002** (export quality) — Day 9 scope.
+- **BUG-013** (webrtcvad Docker image) — add to Day 10 deploy checklist.
+
+---
+
+### Files changed this session
+
+- `backend/core/config.py` — EMAIL_FROM default + EMAIL_FROM_NAME field
+- `backend/services/notifications.py` — display-name format in From field
+- `backend/api/routes/auth.py` — email normalization + logging
+- `frontend/templates/index.html` — script order fix, DOMContentLoaded wrap, success screen, better forgot message
+- `.env.example` — created
+- `docs/CHANGELOG.md` — Session 8 entry prepended
+- `docs/SESSION_LOG.md` — this entry appended
+- `docs/DECISIONS.md` — two decisions appended
+- `docs/KNOWN_BUGS.md` — BUG-015, BUG-016 added

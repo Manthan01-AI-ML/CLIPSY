@@ -66,9 +66,10 @@ class Settings(BaseSettings):
     # Set RESEND_API_KEY in .env for live email. If empty, reset links are
     # printed to the console (dev fallback — never sends real email).
     RESEND_API_KEY: str = ""
-    EMAIL_FROM: str = "hello@clipsy.pro"
+    EMAIL_FROM: str = "noreply@send.clipsy.in"
+    EMAIL_FROM_NAME: str = "Clipsy"
     # Used to build the reset-password link in the email body.
-    # Set to your production domain in .env (e.g. https://app.clipsy.pro).
+    # Set to your production domain in .env (e.g. https://app.clipsy.in).
     FRONTEND_URL: str = "http://localhost:8080"
 
     # --- Rate limits ---

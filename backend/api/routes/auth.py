@@ -12,8 +12,11 @@ NOTE: We do NOT use `from __future__ import annotations` here because slowapi +
 FastAPI need runtime access to Pydantic model types at decorator evaluation time.
 """
 import hashlib
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from slowapi import Limiter
@@ -63,7 +66,8 @@ def register(
             ),
         )
 
-    existing = db.query(User).filter(User.email == payload.email).first()
+    normalized_email = payload.email.strip().lower()
+    existing = db.query(User).filter(User.email == normalized_email).first()
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -71,7 +75,7 @@ def register(
         )
 
     user = User(
-        email=payload.email,
+        email=normalized_email,
         hashed_password=hash_password(payload.password),
         full_name=payload.full_name,
         plan=Plan.free,
@@ -104,7 +108,8 @@ def login(
     payload: LoginRequest,
     db: Session = Depends(get_db),
 ) -> TokenResponse:
-    user = db.query(User).filter(User.email == payload.email).first()
+    normalized_email = payload.email.strip().lower()
+    user = db.query(User).filter(User.email == normalized_email).first()
 
     # Timing-safe: always verify password even if user doesn't exist.
     is_valid = user is not None and verify_password(payload.password, user.hashed_password)
@@ -189,8 +194,10 @@ def forgot_password(
     """
     _GENERIC_OK = {"message": "If that email is registered, a reset link is on its way."}
 
-    user = db.query(User).filter(User.email == payload.email).first()
+    normalized_email = payload.email.strip().lower()
+    user = db.query(User).filter(User.email == normalized_email).first()
     if user is None:
+        logger.info("forgot-password: no user matched email (case-normalized lookup)")
         return _GENERIC_OK
 
     # Invalidate any previous unexpired tokens for this user (one valid token at a time)
@@ -214,6 +221,7 @@ def forgot_password(
 
     reset_url = f"{settings.FRONTEND_URL}/reset-password?token={raw_token}"
 
+    logger.info("forgot-password: user matched, sending reset email")
     try:
         from backend.services.notifications import send_password_reset_email
         send_password_reset_email(

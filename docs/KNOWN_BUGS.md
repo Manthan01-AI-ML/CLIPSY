@@ -4,6 +4,28 @@
 
 ## Open
 
+### BUG-015 — CSP blocks Google Fonts on reset-password page
+
+**Symptom:** Browser console on `http://localhost:8000/reset-password?token=X` logs: `"Loading the stylesheet 'https://fonts.googleapis.com/css2?...' violates the following Content Security Policy directive: 'style-src 'self' 'unsafe-inline''"`.
+
+**Affected area:** `backend/core/security.py` — CSP `style-src` / `font-src` directives
+**Severity:** Low — cosmetic only. External fonts (Instrument Serif, Geist, Geist Mono) don't load; browser falls back to system fonts. No functional break.
+**Status:** Open (Phase 2D.2 scope)
+**Fix path:** Add `https://fonts.googleapis.com https://fonts.gstatic.com` to the `style-src` and `font-src` directives in the CSP middleware.
+
+---
+
+### BUG-016 — Reset-password inputs not wrapped in `<form>`
+
+**Symptom:** Browser console warns: `"Password field is not contained in a form"` (twice — for `#reset-new-password` + `#reset-confirm-password`).
+
+**Affected area:** `frontend/templates/index.html` — `#reset-pw-form-wrap` section
+**Severity:** Low — usability nuisance. Password managers (1Password, Chrome, Safari) may not offer to save the new password. Form does not submit on Enter key press.
+**Status:** Open (Phase 2D.2 scope)
+**Fix path:** Wrap the reset-password inputs in `<form id="reset-pw-form" onsubmit="return false;">` with `autocomplete="new-password"` attributes. Wire Enter key → submit button click.
+
+---
+
 ### BUG-008 — High track fragmentation in `track_faces_across_frames()` on cut-heavy content ✓ RESOLVED
 
 **Symptom:** `01_single_speaker.mp4` (TEDx talk): 963 frames sampled at 2fps → 346 unique tracks. Expected ≤5 for a single-speaker video. `03_panel_4person.mp4`: 1401 frames → 724 tracks. Track IDs fragment on every camera cut or pan because IoU drops to 0 when the face jumps to a new screen position.

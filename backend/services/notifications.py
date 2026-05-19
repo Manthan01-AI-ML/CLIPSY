@@ -120,8 +120,13 @@ def send_password_reset_email(
 
         html_body = _build_reset_email_html(reset_url, user_name)
 
+        from_field = (
+            f"{settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM}>"
+            if getattr(settings, "EMAIL_FROM_NAME", None)
+            else settings.EMAIL_FROM
+        )
         resend.Emails.send({
-            "from": settings.EMAIL_FROM,
+            "from": from_field,
             "to": [to_email],
             "subject": "Reset your Clipsy password",
             "html": html_body,
