@@ -1860,6 +1860,30 @@ def auto_keyframes_endpoint(
     if clip is None:
         raise HTTPException(404, detail="Clip not found")
 
+    # FAST PATH: Phase 2C worker already computed and cached adaptive keyframes
+    # in clip.meta["user_crop"]. Return immediately — no pipeline re-run needed.
+    meta   = clip.meta or {}
+    cached = meta.get("user_crop")
+    if cached and isinstance(cached, dict) and cached.get("keyframes"):
+        kfs = cached["keyframes"]
+        logger.info(
+            f"[clip {clip_id}] auto-keyframes: cache hit — "
+            f"returning {len(kfs)} cached keyframe(s)"
+        )
+        return {
+            "clip_id":   str(clip_id),
+            "keyframes": kfs,
+            "cached":    True,
+            "diagnostics": {
+                "keyframes_placed": len(kfs),
+                "source": "worker_phase2c_cache",
+            },
+        }
+
+    # SLOW PATH: legacy clip (created before Phase 2C wired auto-keyframes into
+    # worker). Compute once, persist to clip.meta so subsequent calls are fast.
+    logger.info(f"[clip {clip_id}] auto-keyframes: no cache — computing (one-time)")
+
     job = db.query(VideoJob).filter(VideoJob.id == clip.video_job_id).first()
     if job is None or not job.file_path:
         raise HTTPException(409, detail="Source video not found")
@@ -1896,12 +1920,31 @@ def auto_keyframes_endpoint(
             "diagnostics":    {},
         }
 
-    is_voice = audio_activity.get("is_voice", [])
+    # Persist computed keyframes into clip.meta so next call is a cache hit.
+    if keyframes:
+        clip.meta = {
+            **(clip.meta or {}),
+            "user_crop": {
+                "version": 2,
+                "keyframes": keyframes,
+                "zoom": 1.0,
+                "transition": "smooth",
+                "transition_dur": 0.4,
+            },
+        }
+        flag_modified(clip, "meta")
+        db.commit()
+        logger.info(
+            f"[clip {clip_id}] auto-keyframes: cached {len(keyframes)} keyframe(s) to clip.meta"
+        )
+
+    is_voice  = audio_activity.get("is_voice", [])
     voice_pct = round(100 * sum(is_voice) / max(1, len(is_voice)), 1)
 
     return {
         "clip_id":  str(clip_id),
         "keyframes": keyframes,
+        "cached":   False,
         "diagnostics": {
             "source_duration_sec":  round(audio_activity.get("duration_sec", 0), 1),
             "voice_pct":            voice_pct,

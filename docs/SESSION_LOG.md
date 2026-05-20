@@ -671,3 +671,82 @@ User confirmed clicking link from real email inbox. Full chain green.
 - `docs/SESSION_LOG.md` — this entry appended
 - `docs/DECISIONS.md` — two decisions appended
 - `docs/KNOWN_BUGS.md` — BUG-015, BUG-016 added
+
+---
+
+## Session 9 — Launch Sprint Day 9: Phase 2D.2 Step 1 — Docker rebuild + auto-keyframes cache + legacy cleanup
+
+**Date:** 2026-05-20
+**Goal:** Bake webrtcvad + resend into Docker image (BUG-013). Fix auto-keyframes endpoint so cached Phase 2C keyframes return in milliseconds instead of re-running the full pipeline (BUG-C1). Kill DEBUG log spam. Delete legacy pre-Phase 2C clips.
+
+---
+
+### Pre-work findings
+
+- `clips.py` auto-keyframes endpoint: `GET /{clip_id}/auto-keyframes`. Runs full pipeline on every call — `analyze_audio_activity` → `track_faces_across_frames` → `compute_active_speaker_timeline` → `place_adaptive_keyframes`. No cache check. Returns `{"clip_id", "keyframes", "diagnostics"}`.
+- `worker.py` stores `clip.meta["user_crop"]` as `{"version": 2, "keyframes": [...], "zoom": 1.0, "transition": "smooth", "transition_dur": 0.4}` at line 435.
+- Both frontend callers (`index.html:8159` and `index.html:8483`) read `data.keyframes` directly from the response — response shape must preserve top-level `keyframes` key.
+- `index.html:8480` already guards: `if (!hasPriorReframe)` before auto-fit-on-open — Phase 2C clips (which have `user_crop` in meta) skip the auto-fit call entirely. Manual "Auto-fit speakers" button still calls the endpoint unconditionally.
+- `logging.basicConfig` in `main.py`: `level=logging.DEBUG` when `DEBUG=True`. `face_detection.py` lines 140/159 are `logger.debug` per-frame — spam source confirmed.
+
+---
+
+### Locked design decisions
+
+**(a) Cache-first over async Celery refactor.** Slow path is a synchronous HTTP endpoint; refactoring to async/Celery would change the frontend contract and require a polling UI. Cache-first keeps the contract identical — clients just get the result faster. Any clip processed by Phase 2C worker never hits the slow path.
+
+**(b) Slow-path result persisted to `clip.meta`.** First manual open of a legacy clip triggers full computation (once). Result written to `clip.meta["user_crop"]` via `flag_modified`. Every subsequent call is a cache hit. Self-healing: no backfill script needed.
+
+**(c) LOG_LEVEL forced to INFO globally.** Separates concerns: `DEBUG=True` in `.env` controls whether API responses include error detail (dev convenience), not log verbosity. MediaPipe per-frame DEBUG lines have no operational value.
+
+**(d) Legacy DELETE over backfill script.** 37 rows, all pre-Phase 2C, none belonging to active paying users. Deleting them was cleaner than running a backfill that would trigger 37 × 10-minute slow-path computations. New clips going forward are always Phase 2C.
+
+---
+
+### Files edited
+
+- `backend/api/routes/clips.py` — auto-keyframes endpoint: fast path (`clip.meta["user_crop"]` cache hit, returns `{"keyframes": [...], "cached": True, "diagnostics": {...}}`); slow path (legacy compute, then `flag_modified` + `db.commit()` to persist); both paths return `data.keyframes` at top level for frontend compat.
+- `backend/main.py` — `logging.basicConfig(level=logging.INFO)` — always INFO.
+
+---
+
+### Data migration
+
+```sql
+DELETE FROM clips
+WHERE meta IS NULL
+   OR meta::text NOT LIKE '%user_crop%'
+RETURNING id, user_id;
+-- Result: 37 rows deleted (24 dev test, 13 early-tester pre-Phase 2C)
+```
+
+Orphaned clip files on `/storage/clips` deferred — minimal disk impact, cleanup script post-beta (BUG-017).
+
+---
+
+### E2E test
+
+Cache hit verification on clip `177058c8` (test keyframes seeded):
+- Call 1 (cold): **224ms**, `cached=True`, `keyframes=2`, `source=worker_phase2c_cache`
+- Call 2 (warm): **34ms**, `cached=True`
+- Backend logs: only `[INFO]` lines — zero `[DEBUG]` MediaPipe spam
+
+Docker verification: `import webrtcvad, resend, mediapipe` → all OK from fresh image.
+
+---
+
+### Open items
+
+- **BUG-017** — orphaned clip files on disk. Post-beta cleanup.
+- **BUG-015** / **BUG-016** — CSP fonts, form wrap. Phase 2D.2 scope.
+- **BUG-002** — export quality. Day 9 scope.
+
+---
+
+### Files changed this session
+
+- `backend/api/routes/clips.py` — auto-keyframes cache logic
+- `backend/main.py` — LOG_LEVEL = INFO
+- `docs/CHANGELOG.md` — Session 9 entry prepended
+- `docs/SESSION_LOG.md` — this entry appended
+- `docs/KNOWN_BUGS.md` — BUG-013 resolved, BUG-017 added

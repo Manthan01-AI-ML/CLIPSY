@@ -25,7 +25,7 @@ from backend.core.security import apply_security
 from backend.services.storage import ensure_storage_ready
 
 logging.basicConfig(
-    level=logging.INFO if not settings.DEBUG else logging.DEBUG,
+    level=logging.INFO,  # Always INFO — DEBUG flag controls API error detail, not log verbosity
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)

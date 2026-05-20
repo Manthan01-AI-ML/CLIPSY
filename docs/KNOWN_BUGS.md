@@ -37,14 +37,24 @@
 
 ---
 
-### BUG-013 — Docker image missing `webrtcvad`
+### BUG-013 — Docker image missing `webrtcvad` ✓ RESOLVED
 
 **Symptom:** Worker container's Python env doesn't have `webrtcvad` installed, even though `requirements.txt` lists it as `webrtcvad==2.0.10`. Phase 2C E2E test required `pip install webrtcvad==2.0.10` in-place for the running container. Without it, `analyze_audio_activity` raises `ImportError` and the Phase 2C adaptive keyframe block catches it, logs a warning, and falls back to static smart_crop — adaptive keyframes silently disabled.
 
 **Affected area:** `backend/pipeline/audio_activity.py` — `import webrtcvad` at call time
 **Severity:** Medium — graceful degradation works, but adaptive keyframes are disabled until fix. No user-visible error; only log evidence.
-**Status:** Open — fixes automatically on next `docker compose build`. Dockerfile already has `build-essential` for the C extension.
-**Action:** Add to Day 10 deploy checklist: `docker compose build worker` before pushing to Hetzner.
+**Status:** RESOLVED 2026-05-20 — `docker compose build --no-cache backend worker` run in Phase 2D.2 step 1. `webrtcvad 2.0.10`, `resend 2.9.0`, `mediapipe 0.10.35` all verified in fresh container. Day 11 deploy unblocked.
+
+---
+
+### BUG-017 — Orphaned clip files on disk after legacy DELETE
+
+**Symptom:** 37 legacy clips deleted from DB in Phase 2D.2 step 1. Their rendered MP4 files on `/storage/.../clips/` were not removed — disk space not freed, files unreachable via any API endpoint.
+
+**Affected area:** `/storage` volume — clip subdirectories for deleted job IDs
+**Severity:** Low — no functional impact, disk waste only (~0.5–1 GB estimated)
+**Status:** Open (post-beta cleanup scope)
+**Fix path:** Walk `/storage` tree, collect all clip file paths, cross-reference against `clips.file_path` in DB, `rm` orphans. ~30 min script.
 
 ---
 
@@ -76,6 +86,8 @@
 
 | ID | Title | Fixed | Session/Commit |
 |---|---|---|---|
+| BUG-013 | Docker image missing `webrtcvad` (C extension not compiled into image) | 2026-05-20 | Session 9 |
+| BUG-C1 | `/auto-keyframes` re-runs full pipeline on every call (~10 min); no cache check | 2026-05-20 | Session 9 |
 | BUG-009 | `IndexError` in `compute_active_speaker_timeline` for seconds with frames but no faces | 2026-05-16 | Session 4 |
 | BUG-003 | Forgot password: no backend endpoint | 2026-05-12 | Session 1 |
 | BUG-005 | MediaPipe requires `libgles2` + `libegl1` in Docker | 2026-05-15 | Session 2 |

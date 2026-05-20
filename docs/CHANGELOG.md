@@ -2,6 +2,26 @@
 
 ---
 
+## 2026-05-20 — Session 9: Phase 2D.2 Step 1 — Docker rebuild + auto-keyframes cache + legacy cleanup
+
+### Fixed
+- **Docker images rebuilt `--no-cache`** — `webrtcvad 2.0.10`, `resend 2.9.0`, `mediapipe 0.10.35` now baked into the image layer. No more in-place `pip install` needed after fresh deploy. BUG-013 resolved.
+- **`backend/api/routes/clips.py`** `/{clip_id}/auto-keyframes` endpoint: added cache-first fast path. If Phase 2C worker already stored keyframes in `clip.meta["user_crop"]`, endpoint returns immediately (<100ms) without re-running the pipeline. Slow path preserved for legacy clips; computed result is now persisted back to `clip.meta` on first compute so subsequent calls are cached. BUG-C1 resolved.
+- **`backend/main.py`** — `logging.basicConfig` level forced to `INFO` regardless of `DEBUG` env flag. `DEBUG=True` previously enabled per-frame MediaPipe `logger.debug` spam (lines 140/159 in `face_detection.py`). Operational logs unaffected.
+
+### Data cleanup
+- Deleted 37 legacy clips (pre-Phase 2C) from DB: 24 from dev test accounts, 13 from early-tester data (April–early May). All lacked Phase 2C auto-keyframe cache and would have triggered the multi-minute slow path on first open. Clean state for Day 13 launch.
+
+### Known issues added
+- BUG-017 — Orphaned clip files on disk after legacy DELETE. Low priority. Post-beta cleanup.
+
+### E2E verification
+- Cache hit: **224ms** cold, **34ms** warm. Was 10+ minutes before fix.
+- `docker compose exec backend python -c "import webrtcvad, resend, mediapipe; print('all OK')"` — all green.
+- Zero `[DEBUG]` lines in backend logs after log level fix.
+
+---
+
 ## 2026-05-19 — Session 8: Phase 2D.1 — Forgot-password email flow end-to-end
 
 ### Fixed
