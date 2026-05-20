@@ -149,3 +149,4 @@ scripts/debug_output/*.png
 scripts/debug_output_2b1/*.png
 scripts/debug_output_2b1/*.json
 !scripts/debug_output_2b1/summary.json
+scripts/debug_output_*/
